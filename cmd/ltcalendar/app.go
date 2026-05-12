@@ -23,11 +23,12 @@ func NewApp(repo repository.RepositoryInterface, cfg config.Config) *App {
 }
 
 func (a *App) GetHandler() http.Handler {
-	shorterService := service.NewShorterService(a.repo, &a.cfg)
+	shorterService := service.NewCalendarService(a.repo, &a.cfg)
 	requestsHandler := handler.NewRequestsHandler(shorterService)
 	r := chi.NewRouter()
 	r.Get("/ping", requestsHandler.Ping)
-	// r.Post("/", requestsHandler.Shorten)
+	r.Post("/api/tests", requestsHandler.AddTest)
+	r.Get("/api/tests", requestsHandler.GetTests)
 	// r.Get("/{id}", requestsHandler.GetURL)
 	// r.Post("/api/shorten", requestsHandler.ApiShorten)
 	// r.Post("/api/shorten/batch", requestsHandler.ApiShortenBatch)

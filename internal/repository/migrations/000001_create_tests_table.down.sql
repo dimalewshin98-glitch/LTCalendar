@@ -1,0 +1,3 @@
+DROP INDEX IF EXISTS idx_test_name;
+DROP INDEX IF EXISTS idx_start_time;
+DROP TABLE IF EXISTS tests;

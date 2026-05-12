@@ -10,20 +10,13 @@ import (
 	"strings"
 	"time"
 
+	models "github.com/dimalewshin98-glitch/LTCalendar/internal/model"
+	"github.com/google/uuid"
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
-//go:embed migrations/000001_create_urls_table.up.sql
-var sqlCreateUrlsTable string
-
-//go:embed migrations/000002_add_unique_index_to_orig_url.up.sql
-var sqlAddUniqueIndexToOrigUrl string
-
-//go:embed migrations/000003_add_user_id_column.up.sql
-var sqlAddUserIdColumn string
-
-//go:embed migrations/000004_add_deleted_flag_column.up.sql
-var sqlAddDeletedFlagColumn string
+//go:embed migrations/000001_create_tests_table.up.sql
+var sqlCreateTestsTable string
 
 type DBRepository struct {
 	dbDsn        string
@@ -80,29 +73,8 @@ func (r *DBRepository) CreateTables(ctx context.Context) error {
 		rows.Scan(&tableName)
 		tables = append(tables, tableName)
 	}
-	if !slices.Contains(tables, "urls") {
-		_, err = tx.ExecContext(ctx, sqlCreateUrlsTable)
-		if err != nil {
-			if rbErr := tx.Rollback(); rbErr != nil {
-				return rbErr
-			}
-			return err
-		}
-		_, err = tx.ExecContext(ctx, sqlAddUniqueIndexToOrigUrl)
-		if err != nil {
-			if rbErr := tx.Rollback(); rbErr != nil {
-				return rbErr
-			}
-			return err
-		}
-		_, err = tx.ExecContext(ctx, sqlAddUserIdColumn)
-		if err != nil {
-			if rbErr := tx.Rollback(); rbErr != nil {
-				return rbErr
-			}
-			return err
-		}
-		_, err = tx.ExecContext(ctx, sqlAddDeletedFlagColumn)
+	if !slices.Contains(tables, "tests") {
+		_, err = tx.ExecContext(ctx, sqlCreateTestsTable)
 		if err != nil {
 			if rbErr := tx.Rollback(); rbErr != nil {
 				return rbErr
@@ -114,7 +86,7 @@ func (r *DBRepository) CreateTables(ctx context.Context) error {
 }
 
 func (r *DBRepository) GetUsersID(ctx context.Context) ([]int, error) {
-	sqlSelect := "SELECT DISTINCT user_id FROM urls WHERE user_id IS NOT NULL;"
+	sqlSelect := "SELECT DISTINCT user_id FROM tests WHERE user_id IS NOT NULL;"
 	rows, err := r.dbConnection.QueryContext(ctx, sqlSelect)
 	if err != nil {
 		return nil, err
@@ -130,6 +102,46 @@ func (r *DBRepository) GetUsersID(ctx context.Context) ([]int, error) {
 		usersID = append(usersID, userID)
 	}
 	return usersID, nil
+}
+
+func (r *DBRepository) AddTest(ctx context.Context, userID int, req models.ApiAddTestReq, endTime string) (string, error) {
+	UUID := uuid.New().String()
+	tx, err := r.dbConnection.BeginTx(ctx, nil)
+	if err != nil {
+		return "", err
+	}
+	select {
+	case <-ctx.Done():
+		rbErr := tx.Rollback()
+		return "", rbErr
+	default:
+		sqlInsert := "INSERT INTO tests (uuid, user_id, test_name, tps, start_time, end_time, additional_params, is_deleted) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)"
+		tx.QueryRowContext(ctx, sqlInsert, UUID, userID, req.TestName, req.TPS, req.StartTime, endTime, req.AdditionalParams, false)
+		err := tx.Commit()
+		if err != nil {
+			return "", err
+		}
+		return UUID, err
+	}
+}
+
+func (r *DBRepository) GetTests(ctx context.Context, userID int) (models.ApiGetTestsRes, error) {
+	sqlSelect := "SELECT uuid, test_name FROM tests where user_id = $1;"
+	rows, err := r.dbConnection.QueryContext(ctx, sqlSelect, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var userTests models.ApiGetTestsRes
+	for rows.Next() {
+		var userTest models.TestRes
+		err := rows.Scan(&userTest.TestUID, &userTest.TestName)
+		if err != nil {
+			return nil, err
+		}
+		userTests = append(userTests, userTest)
+	}
+	return userTests, nil
 }
 
 func (r *DBRepository) Ping(ctx context.Context) error {

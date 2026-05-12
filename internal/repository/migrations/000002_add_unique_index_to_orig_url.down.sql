@@ -1,1 +1,0 @@
-DROP INDEX IF EXISTS idx_original_url_unique;
