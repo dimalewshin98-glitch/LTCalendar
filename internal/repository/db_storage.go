@@ -144,6 +144,38 @@ func (r *DBRepository) GetTests(ctx context.Context, userID int) (models.ApiGetT
 	return userTests, nil
 }
 
+func (r *DBRepository) GetTest(ctx context.Context, userID int, testUUID string) (models.ApiGetTestRes, error) {
+	sqlSelect := "SELECT test_name, start_time, end_time, tps, additional_params, is_deleted FROM tests where user_id = $1 and uuid = $2;"
+	row := r.dbConnection.QueryRowContext(ctx, sqlSelect, userID, testUUID)
+	var userTest models.ApiGetTestRes
+	var isDeleted bool
+	err := row.Scan(&userTest.TestName, &userTest.StartTime, &userTest.EndTime, &userTest.TPS, &userTest.AdditionalParams, &isDeleted)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return models.ApiGetTestRes{}, ErrTestNotExists
+		}
+		return models.ApiGetTestRes{}, err
+	}
+	if isDeleted {
+		return models.ApiGetTestRes{}, ErrTestDeleted
+	}
+	return userTest, nil
+}
+
+func (r *DBRepository) UpdateTest(ctx context.Context, userID int, testUUID string, test models.ApiUpdateTestReq) (string, error) {
+	tx, err := r.dbConnection.BeginTx(ctx, nil)
+	if err != nil {
+		return "", err
+	}
+	sqlInsert := "UPDATE tests SET (test_name, start_time, end_time, tps, additional_params) VALUES ($1, $2, $3, $4, $5) where user_id = $6 and uuid = $7"
+	_ = tx.QueryRowContext(ctx, sqlInsert, test.TestName, test.StartTime, test.EndTime, test.TPS, test.AdditionalParams, userID, testUUID)
+	err = tx.Commit()
+	if err != nil {
+		return "", err
+	}
+	return testUUID, nil
+}
+
 func (r *DBRepository) Ping(ctx context.Context) error {
 	err := r.dbConnection.PingContext(ctx)
 	return err

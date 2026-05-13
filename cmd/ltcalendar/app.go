@@ -29,6 +29,8 @@ func (a *App) GetHandler() http.Handler {
 	r.Get("/ping", requestsHandler.Ping)
 	r.Post("/api/tests", requestsHandler.AddTest)
 	r.Get("/api/tests", requestsHandler.GetTests)
+	r.Get("/api/tests/{uuid}", requestsHandler.GetTest)
+	r.Put("/api/tests/{uuid}", requestsHandler.UpdateTest)
 	// r.Get("/{id}", requestsHandler.GetURL)
 	// r.Post("/api/shorten", requestsHandler.ApiShorten)
 	// r.Post("/api/shorten/batch", requestsHandler.ApiShortenBatch)

@@ -3,10 +3,12 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"time"
 
 	models "github.com/dimalewshin98-glitch/LTCalendar/internal/model"
+	"github.com/dimalewshin98-glitch/LTCalendar/internal/repository"
 	"github.com/dimalewshin98-glitch/LTCalendar/internal/service"
 )
 
@@ -87,10 +89,78 @@ func (s *RequestsHandler) GetTests(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-
+	if len(tests) == 0 {
+		http.Error(w, "", http.StatusNoContent)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	enc := json.NewEncoder(w)
 	err = enc.Encode(tests)
+	if err != nil {
+		http.Error(w, "Json response encode error", http.StatusBadRequest)
+		return
+	}
+}
+
+func (s *RequestsHandler) GetTest(w http.ResponseWriter, r *http.Request) {
+	userID := r.Context().Value("userID").(int)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusBadRequest)
+		return
+	}
+	testUUID := r.PathValue("uuid")
+	test, err := s.service.GetTest(ctx, userID, testUUID)
+	if err != nil {
+		if errors.Is(err, repository.ErrTestNotExists) {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		} else if errors.Is(err, repository.ErrTestDeleted) {
+			w.WriteHeader(http.StatusGone)
+			return
+		} else {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	enc := json.NewEncoder(w)
+	err = enc.Encode(test)
+	if err != nil {
+		http.Error(w, "Json response encode error", http.StatusBadRequest)
+		return
+	}
+}
+
+func (s *RequestsHandler) UpdateTest(w http.ResponseWriter, r *http.Request) {
+	userID := r.Context().Value("userID").(int)
+	testUUID := r.PathValue("uuid")
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if r.Method != http.MethodPut {
+		http.Error(w, "Method not allowed", http.StatusBadRequest)
+		return
+	}
+	if r.Header.Get("Content-Type") != "application/json" {
+		http.Error(w, "Content-Type not allowed", http.StatusBadRequest)
+		return
+	}
+	var req models.ApiUpdateTestReq
+	dec := json.NewDecoder(r.Body)
+	defer r.Body.Close()
+	err := dec.Decode(&req)
+	if err != nil {
+		http.Error(w, "Json request decode error", http.StatusBadRequest)
+		return
+	}
+	_, err = s.service.UpdateTest(ctx, userID, testUUID, req)
+	resHeader := http.StatusAccepted
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.WriteHeader(resHeader)
 	if err != nil {
 		http.Error(w, "Json response encode error", http.StatusBadRequest)
 		return
