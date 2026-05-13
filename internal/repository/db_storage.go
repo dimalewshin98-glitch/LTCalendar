@@ -167,7 +167,15 @@ func (r *DBRepository) UpdateTest(ctx context.Context, userID int, testUUID stri
 	if err != nil {
 		return "", err
 	}
-	sqlInsert := "UPDATE tests SET (test_name, start_time, end_time, tps, additional_params) VALUES ($1, $2, $3, $4, $5) where user_id = $6 and uuid = $7"
+	sqlInsert := `
+        UPDATE tests
+        SET test_name = $1,
+            start_time = $2,
+            end_time = $3,
+            tps = $4,
+            additional_params = $5
+        WHERE user_id = $6 AND uuid = $7
+	`
 	_ = tx.QueryRowContext(ctx, sqlInsert, test.TestName, test.StartTime, test.EndTime, test.TPS, test.AdditionalParams, userID, testUUID)
 	err = tx.Commit()
 	if err != nil {
