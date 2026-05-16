@@ -114,8 +114,8 @@ func (r *DBRepository) AddTest(ctx context.Context, userID int, req models.ApiAd
 		rbErr := tx.Rollback()
 		return "", rbErr
 	default:
-		sqlInsert := "INSERT INTO tests (uuid, user_id, test_name, tps, start_time, end_time, additional_params, is_deleted) VALUES ($1, $2, $3, $4, $5, $6, $7, $8);"
-		tx.QueryRowContext(ctx, sqlInsert, UUID, userID, req.TestName, req.TPS, req.StartTime, endTime, req.AdditionalParams, false)
+		sqlInsert := "INSERT INTO tests (uuid, user_id, test_name, tps, start_time, end_time, additional_params, is_deleted, is_started) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9);"
+		tx.QueryRowContext(ctx, sqlInsert, UUID, userID, req.TestName, req.TPS, req.StartTime, endTime, req.AdditionalParams, false, false)
 		err := tx.Commit()
 		if err != nil {
 			return "", err
@@ -217,8 +217,8 @@ func (r *DBRepository) SetTestStarted(ctx context.Context, userID int, testUUID 
 	defer tx.Rollback()
 	sqlInsert := `
         UPDATE tests
-        SET is_started = true,
-        WHERE uuid = $1 AND is_deleted = false;
+        SET is_started = true
+        WHERE uuid = $1 AND is_deleted = false
 	`
 	var row *sql.Row
 	if userID != 0 {

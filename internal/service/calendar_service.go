@@ -122,7 +122,7 @@ func (s *CalendarService) scheduleTests() {
 				if err != nil {
 					logger.Log.Error("Error parse time in thread", zap.String("error", err.Error()))
 				} else {
-					if startTime.After(time.Now()) {
+					if time.Now().After(startTime) {
 						go s.startTest(tests[i].TestUID)
 					}
 				}
