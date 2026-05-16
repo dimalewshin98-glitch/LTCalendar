@@ -113,7 +113,7 @@ func (s *CalendarService) scheduleTests() {
 	for {
 		time.Sleep(5 * time.Second)
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		tests, err := s.repo.GetTests(ctx, 0, false)
+		tests, err := s.repo.GetTests(ctx, 0, true)
 		if err != nil {
 			logger.Log.Error("Error get tests in thread", zap.String("error", err.Error()))
 		} else {

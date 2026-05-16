@@ -126,7 +126,7 @@ func (r *DBRepository) AddTest(ctx context.Context, userID int, req models.ApiAd
 
 func (r *DBRepository) GetTests(ctx context.Context, userID int, excludeStarted bool) (models.ApiGetTestsRes, error) {
 	var sqlSelect string
-	sqlSelect = "SELECT uuid, test_name, start_time FROM tests where is_deleted = false"
+	sqlSelect = "SELECT uuid, test_name, start_time, is_started FROM tests where is_deleted = false"
 	if excludeStarted {
 		sqlSelect += "and is_started=false"
 	}
@@ -145,7 +145,7 @@ func (r *DBRepository) GetTests(ctx context.Context, userID int, excludeStarted 
 	var userTests models.ApiGetTestsRes
 	for rows.Next() {
 		var userTest models.TestRes
-		err := rows.Scan(&userTest.TestUID, &userTest.TestName, &userTest.StartTime)
+		err := rows.Scan(&userTest.TestUID, &userTest.TestName, &userTest.StartTime, &userTest.IsStarted)
 		if err != nil {
 			return nil, err
 		}
@@ -155,7 +155,7 @@ func (r *DBRepository) GetTests(ctx context.Context, userID int, excludeStarted 
 }
 
 func (r *DBRepository) GetTest(ctx context.Context, userID int, testUUID string) (models.ApiGetTestRes, error) {
-	sqlSelect := "SELECT test_name, start_time, end_time, tps, additional_params, is_deleted FROM tests where uuid = $1"
+	sqlSelect := "SELECT test_name, start_time, end_time, tps, additional_params, is_started, is_deleted FROM tests where uuid = $1"
 	var row *sql.Row
 	if userID != 0 {
 		sqlSelect += " and user_id = $2"
@@ -165,7 +165,7 @@ func (r *DBRepository) GetTest(ctx context.Context, userID int, testUUID string)
 	}
 	var userTest models.ApiGetTestRes
 	var isDeleted bool
-	err := row.Scan(&userTest.TestName, &userTest.StartTime, &userTest.EndTime, &userTest.TPS, &userTest.AdditionalParams, &isDeleted)
+	err := row.Scan(&userTest.TestName, &userTest.StartTime, &userTest.EndTime, &userTest.TPS, &userTest.AdditionalParams, &userTest.IsStarted, &isDeleted)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return models.ApiGetTestRes{}, ErrTestNotExists

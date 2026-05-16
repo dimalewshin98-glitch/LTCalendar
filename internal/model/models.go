@@ -18,6 +18,7 @@ type TestRes struct {
 	TestUID   string `json:"test_uuid"`
 	TestName  string `json:"test_name"`
 	StartTime string `json:"start_time"`
+	IsStarted bool   `json:"is_started"`
 }
 
 type ApiGetTestRes struct {
@@ -26,6 +27,7 @@ type ApiGetTestRes struct {
 	EndTime          string  `json:"end_time"`
 	TPS              float32 `json:"tps"`
 	AdditionalParams string  `json:"additional_params"`
+	IsStarted        bool    `json:"is_started"`
 }
 
 type ApiUpdateTestReq struct {
