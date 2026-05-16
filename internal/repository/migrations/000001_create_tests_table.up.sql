@@ -6,6 +6,7 @@ CREATE TABLE tests (
     tps DECIMAL(10, 3),
     additional_params TEXT NOT NULL,
     user_id INTEGER,
+    is_started BOOLEAN
     is_deleted BOOLEAN
 );
 

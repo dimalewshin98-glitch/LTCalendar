@@ -12,4 +12,5 @@ type ServiceInterface interface {
 	GetTests(ctx context.Context, userID int) (models.ApiGetTestsRes, error)
 	GetTest(ctx context.Context, userID int, testUUID string) (models.ApiGetTestRes, error)
 	UpdateTest(ctx context.Context, userID int, testUUID string, test models.ApiUpdateTestReq) (string, error)
+	Delete(ctx context.Context, userID int, testUUID string) (string, error)
 }

@@ -31,10 +31,6 @@ func (a *App) GetHandler() http.Handler {
 	r.Get("/api/tests", requestsHandler.GetTests)
 	r.Get("/api/tests/{uuid}", requestsHandler.GetTest)
 	r.Put("/api/tests/{uuid}", requestsHandler.UpdateTest)
-	// r.Get("/{id}", requestsHandler.GetURL)
-	// r.Post("/api/shorten", requestsHandler.ApiShorten)
-	// r.Post("/api/shorten/batch", requestsHandler.ApiShortenBatch)
-	// r.Get("/api/user/urls", requestsHandler.ApiUserUrls)
-	// r.Delete("/api/user/urls", requestsHandler.Delete)
+	r.Delete("/api/tests/{uuid}", requestsHandler.DeleteTest)
 	return r
 }

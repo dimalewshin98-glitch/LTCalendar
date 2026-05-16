@@ -7,10 +7,14 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/go-playground/validator/v10"
+
 	models "github.com/dimalewshin98-glitch/LTCalendar/internal/model"
 	"github.com/dimalewshin98-glitch/LTCalendar/internal/repository"
 	"github.com/dimalewshin98-glitch/LTCalendar/internal/service"
 )
+
+var ErrPotReqValidate = errors.New("Request validate error")
 
 type RequestsHandler struct {
 	service service.ServiceInterface
@@ -154,15 +158,42 @@ func (s *RequestsHandler) UpdateTest(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Json request decode error", http.StatusBadRequest)
 		return
 	}
+	validate := validator.New()
+	err = validate.Struct(req)
+	if err != nil {
+		http.Error(w, ErrPotReqValidate.Error(), http.StatusBadRequest)
+		return
+	}
 	_, err = s.service.UpdateTest(ctx, userID, testUUID, req)
+	resHeader := http.StatusAccepted
+	if err != nil {
+		if errors.Is(err, repository.ErrTestDeleted) {
+			w.WriteHeader(http.StatusGone)
+			return
+		} else {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
+	w.WriteHeader(resHeader)
+}
+
+func (s *RequestsHandler) DeleteTest(w http.ResponseWriter, r *http.Request) {
+	userID := r.Context().Value("userID").(int)
+	testUUID := r.PathValue("uuid")
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if r.Method != http.MethodDelete {
+		http.Error(w, "Method not allowed", http.StatusBadRequest)
+		return
+	}
+	_, err := s.service.Delete(ctx, userID, testUUID)
 	resHeader := http.StatusAccepted
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
+
 	}
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(resHeader)
-	if err != nil {
-		http.Error(w, "Json response encode error", http.StatusBadRequest)
-		return
-	}
 }

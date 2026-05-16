@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	_ "embed"
-	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -36,7 +35,7 @@ func NewDBRepository(dbDsn string) (*DBRepository, error) {
 		ps = fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
 			hostPort[0], hostPort[1], `postgres`, `admin`, `postgres`)
 	} else {
-		return nil, errors.New("Database host/port wrong format")
+		return nil, ErrDBHostWrongFormat
 	}
 	db, err := sql.Open("pgx", ps)
 	if err != nil {
@@ -115,7 +114,7 @@ func (r *DBRepository) AddTest(ctx context.Context, userID int, req models.ApiAd
 		rbErr := tx.Rollback()
 		return "", rbErr
 	default:
-		sqlInsert := "INSERT INTO tests (uuid, user_id, test_name, tps, start_time, end_time, additional_params, is_deleted) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)"
+		sqlInsert := "INSERT INTO tests (uuid, user_id, test_name, tps, start_time, end_time, additional_params, is_deleted) VALUES ($1, $2, $3, $4, $5, $6, $7, $8);"
 		tx.QueryRowContext(ctx, sqlInsert, UUID, userID, req.TestName, req.TPS, req.StartTime, endTime, req.AdditionalParams, false)
 		err := tx.Commit()
 		if err != nil {
@@ -125,9 +124,20 @@ func (r *DBRepository) AddTest(ctx context.Context, userID int, req models.ApiAd
 	}
 }
 
-func (r *DBRepository) GetTests(ctx context.Context, userID int) (models.ApiGetTestsRes, error) {
-	sqlSelect := "SELECT uuid, test_name FROM tests where user_id = $1;"
-	rows, err := r.dbConnection.QueryContext(ctx, sqlSelect, userID)
+func (r *DBRepository) GetTests(ctx context.Context, userID int, excludeStarted bool) (models.ApiGetTestsRes, error) {
+	var sqlSelect string
+	sqlSelect = "SELECT uuid, test_name, start_time FROM tests where is_deleted = false"
+	if excludeStarted {
+		sqlSelect += "and is_started=false"
+	}
+	var rows *sql.Rows
+	var err error
+	if userID != 0 {
+		sqlSelect += " and user_id = $1"
+		rows, err = r.dbConnection.QueryContext(ctx, sqlSelect, userID)
+	} else {
+		rows, err = r.dbConnection.QueryContext(ctx, sqlSelect)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -135,7 +145,7 @@ func (r *DBRepository) GetTests(ctx context.Context, userID int) (models.ApiGetT
 	var userTests models.ApiGetTestsRes
 	for rows.Next() {
 		var userTest models.TestRes
-		err := rows.Scan(&userTest.TestUID, &userTest.TestName)
+		err := rows.Scan(&userTest.TestUID, &userTest.TestName, &userTest.StartTime)
 		if err != nil {
 			return nil, err
 		}
@@ -145,8 +155,14 @@ func (r *DBRepository) GetTests(ctx context.Context, userID int) (models.ApiGetT
 }
 
 func (r *DBRepository) GetTest(ctx context.Context, userID int, testUUID string) (models.ApiGetTestRes, error) {
-	sqlSelect := "SELECT test_name, start_time, end_time, tps, additional_params, is_deleted FROM tests where user_id = $1 and uuid = $2;"
-	row := r.dbConnection.QueryRowContext(ctx, sqlSelect, userID, testUUID)
+	sqlSelect := "SELECT test_name, start_time, end_time, tps, additional_params, is_deleted FROM tests where uuid = $1"
+	var row *sql.Row
+	if userID != 0 {
+		sqlSelect += " and user_id = $2"
+		row = r.dbConnection.QueryRowContext(ctx, sqlSelect, testUUID, userID)
+	} else {
+		row = r.dbConnection.QueryRowContext(ctx, sqlSelect, testUUID)
+	}
 	var userTest models.ApiGetTestRes
 	var isDeleted bool
 	err := row.Scan(&userTest.TestName, &userTest.StartTime, &userTest.EndTime, &userTest.TPS, &userTest.AdditionalParams, &isDeleted)
@@ -165,8 +181,9 @@ func (r *DBRepository) GetTest(ctx context.Context, userID int, testUUID string)
 func (r *DBRepository) UpdateTest(ctx context.Context, userID int, testUUID string, test models.ApiUpdateTestReq) (string, error) {
 	tx, err := r.dbConnection.BeginTx(ctx, nil)
 	if err != nil {
-		return "", err
+		return testUUID, err
 	}
+	defer tx.Rollback()
 	sqlInsert := `
         UPDATE tests
         SET test_name = $1,
@@ -174,14 +191,124 @@ func (r *DBRepository) UpdateTest(ctx context.Context, userID int, testUUID stri
             end_time = $3,
             tps = $4,
             additional_params = $5
-        WHERE user_id = $6 AND uuid = $7
+        WHERE user_id = $6 AND uuid = $7 AND is_deleted = false RETURNING uuid;
 	`
-	_ = tx.QueryRowContext(ctx, sqlInsert, test.TestName, test.StartTime, test.EndTime, test.TPS, test.AdditionalParams, userID, testUUID)
+	var UUID string
+	row := tx.QueryRowContext(ctx, sqlInsert, test.TestName, test.StartTime, test.EndTime, test.TPS, test.AdditionalParams, userID, testUUID)
+	err = row.Scan(&UUID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return testUUID, ErrTestDeleted
+		}
+		return testUUID, err
+	}
 	err = tx.Commit()
 	if err != nil {
-		return "", err
+		return testUUID, err
 	}
 	return testUUID, nil
+}
+
+func (r *DBRepository) SetTestStarted(ctx context.Context, userID int, testUUID string) (string, error) {
+	tx, err := r.dbConnection.BeginTx(ctx, nil)
+	if err != nil {
+		return testUUID, err
+	}
+	defer tx.Rollback()
+	sqlInsert := `
+        UPDATE tests
+        SET is_started = true,
+        WHERE uuid = $1 AND is_deleted = false;
+	`
+	var row *sql.Row
+	if userID != 0 {
+		sqlInsert += " and user_id = $2 RETURNING uuid"
+		row = r.dbConnection.QueryRowContext(ctx, sqlInsert, testUUID, userID)
+	} else {
+		sqlInsert += " RETURNING uuid"
+		row = r.dbConnection.QueryRowContext(ctx, sqlInsert, testUUID)
+	}
+	var UUID string
+	err = row.Scan(&UUID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return testUUID, ErrTestStarted
+		}
+		return testUUID, err
+	}
+	err = tx.Commit()
+	if err != nil {
+		return testUUID, err
+	}
+	return testUUID, nil
+}
+
+func (r *DBRepository) SetDelete(ctx context.Context, userID int, testUUID string) (string, error) {
+	var ctxUUID string
+	var singleReq bool
+	var isLastReq bool
+	var err error
+	var tx *sql.Tx
+	if ctx.Value("UUID") == nil {
+		ctxUUID = ""
+		singleReq = true
+		isLastReq = true
+	} else {
+		ctxUUID = ctx.Value("UUID").(string)
+		singleReq = false
+		if ctx.Value("isLastReq") == nil {
+			isLastReq = false
+		} else {
+			isLastReq = ctx.Value("isLastReq").(bool)
+		}
+	}
+	if singleReq {
+		tx = nil
+	} else {
+		tx = r.txMap[ctxUUID]
+	}
+	if tx == nil {
+		tx, err = r.dbConnection.BeginTx(ctx, nil)
+		if err != nil {
+			return testUUID, err
+		}
+	}
+	if !singleReq {
+		r.txMap[ctxUUID] = tx
+	}
+	select {
+	case <-ctx.Done():
+		rbErr := tx.Rollback()
+		if !singleReq {
+			delete(r.txMap, ctxUUID)
+		}
+		return testUUID, rbErr
+	default:
+		sqlInsert := "UPDATE tests SET is_deleted = true WHERE uuid = $1 and user_id = $2 RETURNING uuid;"
+		var UUID string
+		row := tx.QueryRowContext(ctx, sqlInsert, testUUID, userID)
+		err = row.Scan(&UUID)
+		if err != nil {
+			if err != sql.ErrNoRows {
+				if rbErr := tx.Rollback(); rbErr != nil {
+					return testUUID, rbErr
+				}
+				return testUUID, err
+			}
+		}
+		if isLastReq {
+			commitErr := tx.Commit()
+			if !singleReq {
+				delete(r.txMap, ctxUUID)
+			}
+			if commitErr == nil {
+				return testUUID, err
+			} else {
+				return testUUID, commitErr
+			}
+		}
+		return testUUID, err
+	}
 }
 
 func (r *DBRepository) Ping(ctx context.Context) error {
