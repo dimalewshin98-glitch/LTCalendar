@@ -9,7 +9,7 @@ import (
 
 var ErrColumnIndexZero = errors.New(`sql: Scan error on column index 0, name "max": converting NULL to int is unsupported`)
 var ErrUserAlreadyExists = errors.New("user already exists")
-var ErrUserNotExists = errors.New("user not exists")
+var ErrUserLogPassIncorrect = errors.New("login or password incorrect")
 var ErrTestNotExists = errors.New("test not exists")
 var ErrTestDeleted = errors.New("test deleted")
 var ErrTestStarted = errors.New("test started")
@@ -17,7 +17,7 @@ var ErrDBHostWrongFormat = errors.New("Database host/port wrong format")
 
 type RepositoryInterface interface {
 	Ping(ctx context.Context) error
-	Login(ctx context.Context, req models.ApiLoginReq) (int, error)
+	Login(ctx context.Context, req models.ApiLoginReq) (int, string, error)
 	Register(ctx context.Context, req models.ApiLoginReq) (int, error)
 	GetUsersID(ctx context.Context) ([]int, error)
 	AddTest(ctx context.Context, userID int, req models.ApiAddTestReq, endTime string) (string, error)

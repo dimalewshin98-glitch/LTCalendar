@@ -96,18 +96,19 @@ func (r *DBRepository) CreateTables(ctx context.Context) error {
 	return tx.Commit()
 }
 
-func (r *DBRepository) Login(ctx context.Context, req models.ApiLoginReq) (int, error) {
-	sqlSelect := "SELECT user_id FROM users WHERE user_login = $1 and user_password = $2"
-	row := r.dbConnection.QueryRowContext(ctx, sqlSelect, req.Login, req.Password)
+func (r *DBRepository) Login(ctx context.Context, req models.ApiLoginReq) (int, string, error) {
+	sqlSelect := "SELECT user_id, user_password FROM users WHERE user_login = $1"
+	row := r.dbConnection.QueryRowContext(ctx, sqlSelect, req.Login)
 	var userID int
-	err := row.Scan(&userID)
+	var userPass string
+	err := row.Scan(&userID, &userPass)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return 0, ErrUserNotExists
+			return 0, "", ErrUserLogPassIncorrect
 		}
-		return 0, err
+		return 0, "", err
 	}
-	return userID, nil
+	return userID, userPass, nil
 }
 
 func (r *DBRepository) Register(ctx context.Context, req models.ApiLoginReq) (int, error) {

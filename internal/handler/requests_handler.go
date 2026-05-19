@@ -63,8 +63,7 @@ func (s *RequestsHandler) RegisterUser(w http.ResponseWriter, r *http.Request) {
 	res, err := s.service.Register(ctx, req)
 	if err != nil {
 		if errors.Is(err, repository.ErrUserAlreadyExists) {
-			w.WriteHeader(http.StatusUnauthorized)
-			w.Write([]byte("User already exists"))
+			http.Error(w, err.Error(), http.StatusUnauthorized)
 			return
 		} else {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -102,9 +101,8 @@ func (s *RequestsHandler) LoginUser(w http.ResponseWriter, r *http.Request) {
 	}
 	res, err := s.service.Login(ctx, req)
 	if err != nil {
-		if errors.Is(err, repository.ErrUserNotExists) {
-			w.WriteHeader(http.StatusUnauthorized)
-			w.Write([]byte("User not exists"))
+		if errors.Is(err, repository.ErrUserLogPassIncorrect) {
+			http.Error(w, err.Error(), http.StatusUnauthorized)
 			return
 		} else {
 			http.Error(w, err.Error(), http.StatusBadRequest)

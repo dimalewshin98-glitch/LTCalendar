@@ -3,6 +3,10 @@ package service
 import (
 	"bytes"
 	"context"
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -15,6 +19,8 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
+
+const ENCRYPT_KEY_B64 = "CCHki0M3gumr8P8fs6I7IkyHHdUeNpEbV1/lpbQOtGg="
 
 var ErrParsingDate = errors.New("Error parsing date. Need date format: YYYY-MM-DDTHH:MM:SS±HH:MM")
 var ErrCompareDate = errors.New("End time must be after start time")
@@ -32,18 +38,36 @@ func NewCalendarService(repo repository.RepositoryInterface, config *config.Conf
 		msgChan: make(chan models.TestDeleteMessage, 1024),
 	}
 	go serviceInstance.flushMessages()
-	// go serviceInstance.scheduleTests()
+	go serviceInstance.scheduleTests()
 	return serviceInstance
 }
 
 func (s *CalendarService) Login(ctx context.Context, req models.ApiLoginReq) (models.ApiLoginRes, error) {
-	userID, err := s.repo.Login(ctx, req)
+	userID, userEncryptedPass, err := s.repo.Login(ctx, req)
+	if err != nil {
+		return models.ApiLoginRes{}, err
+	}
+	userDecryptedPass, err := decryptPass(userEncryptedPass)
+	if err != nil {
+		return models.ApiLoginRes{}, repository.ErrUserLogPassIncorrect
+	}
+	if userDecryptedPass != req.Password {
+		return models.ApiLoginRes{}, repository.ErrUserLogPassIncorrect
+	}
 	res := models.ApiLoginRes{UserID: userID}
 	return res, err
 }
 
 func (s *CalendarService) Register(ctx context.Context, req models.ApiLoginReq) (models.ApiLoginRes, error) {
+	encryptedPass, err := encryptPass(req.Password)
+	if err != nil {
+		return models.ApiLoginRes{}, repository.ErrUserLogPassIncorrect
+	}
+	req.Password = encryptedPass
 	userID, err := s.repo.Register(ctx, req)
+	if err != nil {
+		return models.ApiLoginRes{}, err
+	}
 	res := models.ApiLoginRes{UserID: userID}
 	return res, err
 }
@@ -214,4 +238,68 @@ func (s *CalendarService) countEndTime(startTime time.Time, duration int) string
 	endTime := startTime.Add(time.Duration(duration) * time.Minute)
 	endTimeStr := endTime.Format(layout)
 	return endTimeStr
+}
+
+func generateRandom(size int) ([]byte, error) {
+	b := make([]byte, size)
+	_, err := rand.Read(b)
+	if err != nil {
+		return nil, err
+	}
+	return b, nil
+}
+
+func getKey() ([]byte, error) {
+	return base64.StdEncoding.DecodeString(ENCRYPT_KEY_B64)
+}
+
+func encryptPass(pass string) (string, error) {
+	src := []byte(pass)
+	key, err := getKey()
+	if err != nil {
+		return "", err
+	}
+	aesblock, err := aes.NewCipher(key)
+	if err != nil {
+		return "", err
+	}
+	aesgcm, err := cipher.NewGCM(aesblock)
+	if err != nil {
+		return "", err
+	}
+	nonce, err := generateRandom(aesgcm.NonceSize())
+	if err != nil {
+		return "", err
+	}
+	dst := aesgcm.Seal(nil, nonce, src, nil)
+	dstWithNonce := append(nonce, dst...)
+	encodedToString := base64.StdEncoding.EncodeToString(dstWithNonce)
+	return encodedToString, nil
+}
+
+func decryptPass(pass string) (string, error) {
+	passBytes, err := base64.StdEncoding.DecodeString(pass)
+	if err != nil {
+		return "", err
+	}
+	key, err := getKey()
+	if err != nil {
+		return "", err
+	}
+	aesblock, err := aes.NewCipher(key)
+	if err != nil {
+		return "", err
+	}
+	aesgcm, err := cipher.NewGCM(aesblock)
+	if err != nil {
+		return "", err
+	}
+	nonceSize := aesgcm.NonceSize()
+	decrNonce := passBytes[:nonceSize]
+	ciphertext := passBytes[nonceSize:]
+	decryptedPass, err := aesgcm.Open(nil, decrNonce, ciphertext, nil)
+	if err != nil {
+		return "", err
+	}
+	return string(decryptedPass), nil
 }
