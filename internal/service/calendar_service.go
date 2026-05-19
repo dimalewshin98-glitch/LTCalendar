@@ -32,8 +32,20 @@ func NewCalendarService(repo repository.RepositoryInterface, config *config.Conf
 		msgChan: make(chan models.TestDeleteMessage, 1024),
 	}
 	go serviceInstance.flushMessages()
-	go serviceInstance.scheduleTests()
+	// go serviceInstance.scheduleTests()
 	return serviceInstance
+}
+
+func (s *CalendarService) Login(ctx context.Context, req models.ApiLoginReq) (models.ApiLoginRes, error) {
+	userID, err := s.repo.Login(ctx, req)
+	res := models.ApiLoginRes{UserID: userID}
+	return res, err
+}
+
+func (s *CalendarService) Register(ctx context.Context, req models.ApiLoginReq) (models.ApiLoginRes, error) {
+	userID, err := s.repo.Register(ctx, req)
+	res := models.ApiLoginRes{UserID: userID}
+	return res, err
 }
 
 func (s *CalendarService) AddTest(ctx context.Context, userID int, req models.ApiAddTestReq) (string, error) {

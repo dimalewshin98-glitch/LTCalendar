@@ -32,5 +32,7 @@ func (a *App) GetHandler() http.Handler {
 	r.Get("/api/tests/{uuid}", requestsHandler.GetTest)
 	r.Put("/api/tests/{uuid}", requestsHandler.UpdateTest)
 	r.Delete("/api/tests/{uuid}", requestsHandler.DeleteTest)
+	r.Post("/api/user/login", requestsHandler.LoginUser)
+	r.Post("/api/user/register", requestsHandler.RegisterUser)
 	return r
 }

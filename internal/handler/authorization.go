@@ -35,6 +35,24 @@ func BuildJWTString(userID int) (string, error) {
 	return tokenString, nil
 }
 
+func GetUserID(tokenString string) int {
+	claims := &Claims{}
+	token, err := jwt.ParseWithClaims(tokenString, claims,
+		func(t *jwt.Token) (interface{}, error) {
+			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
+			}
+			return []byte(SECRET_KEY), nil
+		})
+	if err != nil {
+		return -1
+	}
+	if !token.Valid {
+		return -1
+	}
+	return claims.UserID
+}
+
 func CreateUserID(repo repository.RepositoryInterface) (int, error) {
 	dbctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -55,69 +73,40 @@ func CreateUserID(repo repository.RepositoryInterface) (int, error) {
 	return maxUserID, nil
 }
 
-func GetUserID(tokenString string) int {
-	claims := &Claims{}
-	token, err := jwt.ParseWithClaims(tokenString, claims,
-		func(t *jwt.Token) (interface{}, error) {
-			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
-				return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
-			}
-			return []byte(SECRET_KEY), nil
-		})
-	if err != nil {
-		return -1
-	}
-	if !token.Valid {
-		return -1
-	}
-	return claims.UserID
-}
-
 func AuthMiddleware(h http.Handler, repo repository.RepositoryInterface) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var tokenString string
-		cookie, err := r.Cookie("token")
-		if err != nil {
-			if errors.Is(err, http.ErrNoCookie) {
-				userID, err := CreateUserID(repo)
-				if err != nil {
-					http.Error(w, err.Error(), http.StatusBadRequest)
+		var ctx context.Context
+		if (r.URL.String() == "/api/user/register" || r.URL.String() == "/api/user/login") && r.Method == "POST" {
+			h.ServeHTTP(w, r)
+		} else {
+			var tokenString string
+			cookie, err := r.Cookie("token")
+			if err != nil {
+				if errors.Is(err, http.ErrNoCookie) {
+					http.Error(w, "", http.StatusUnauthorized)
 					return
-				}
-				tokenString, err = BuildJWTString(userID)
-				if err != nil {
+				} else {
 					http.Error(w, err.Error(), http.StatusBadRequest)
 					return
 				}
 			} else {
-				http.Error(w, err.Error(), http.StatusBadRequest)
+				tokenString = cookie.Value
+			}
+			userID := GetUserID(tokenString)
+			switch userID {
+			case 0:
+				http.Error(w, "", http.StatusUnauthorized)
+				return
+			case -1:
+				http.Error(w, "", http.StatusUnauthorized)
 				return
 			}
-		} else {
-			tokenString = cookie.Value
+			http.SetCookie(w, &http.Cookie{
+				Name:  "token",
+				Value: tokenString,
+			})
+			ctx = context.WithValue(r.Context(), "userID", userID)
+			h.ServeHTTP(w, r.WithContext(ctx))
 		}
-		userID := GetUserID(tokenString)
-		switch userID {
-		case 0:
-			http.Error(w, "", http.StatusUnauthorized)
-			return
-		case -1:
-			userID, err = CreateUserID(repo)
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusBadRequest)
-				return
-			}
-			tokenString, err = BuildJWTString(userID)
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusBadRequest)
-				return
-			}
-		}
-		http.SetCookie(w, &http.Cookie{
-			Name:  "token",
-			Value: tokenString,
-		})
-		ctx := context.WithValue(r.Context(), "userID", userID)
-		h.ServeHTTP(w, r.WithContext(ctx))
 	})
 }

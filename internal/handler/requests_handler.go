@@ -41,6 +41,96 @@ func (s *RequestsHandler) Ping(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+func (s *RequestsHandler) RegisterUser(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusBadRequest)
+		return
+	}
+	if r.Header.Get("Content-Type") != "application/json" {
+		http.Error(w, "Content-Type not allowed", http.StatusBadRequest)
+		return
+	}
+	var req models.ApiLoginReq
+	dec := json.NewDecoder(r.Body)
+	defer r.Body.Close()
+	err := dec.Decode(&req)
+	if err != nil {
+		http.Error(w, "Json request decode error", http.StatusBadRequest)
+		return
+	}
+	res, err := s.service.Register(ctx, req)
+	if err != nil {
+		if errors.Is(err, repository.ErrUserAlreadyExists) {
+			w.WriteHeader(http.StatusUnauthorized)
+			w.Write([]byte("User already exists"))
+			return
+		} else {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	enc := json.NewEncoder(w)
+	err = enc.Encode(res)
+	if err != nil {
+		http.Error(w, "Json response encode error", http.StatusBadRequest)
+		return
+	}
+}
+
+func (s *RequestsHandler) LoginUser(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusBadRequest)
+		return
+	}
+	if r.Header.Get("Content-Type") != "application/json" {
+		http.Error(w, "Content-Type not allowed", http.StatusBadRequest)
+		return
+	}
+	var req models.ApiLoginReq
+	dec := json.NewDecoder(r.Body)
+	defer r.Body.Close()
+	err := dec.Decode(&req)
+	if err != nil {
+		http.Error(w, "Json request decode error", http.StatusBadRequest)
+		return
+	}
+	res, err := s.service.Login(ctx, req)
+	if err != nil {
+		if errors.Is(err, repository.ErrUserNotExists) {
+			w.WriteHeader(http.StatusUnauthorized)
+			w.Write([]byte("User not exists"))
+			return
+		} else {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
+	tokenString, err := BuildJWTString(res.UserID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name:  "token",
+		Value: tokenString,
+		Path:  "/api/",
+	})
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	enc := json.NewEncoder(w)
+	err = enc.Encode(res)
+	if err != nil {
+		http.Error(w, "Json response encode error", http.StatusBadRequest)
+		return
+	}
+}
+
 func (s *RequestsHandler) AddTest(w http.ResponseWriter, r *http.Request) {
 	userID := r.Context().Value("userID").(int)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

@@ -17,6 +17,9 @@ import (
 //go:embed migrations/000001_create_tests_table.up.sql
 var sqlCreateTestsTable string
 
+//go:embed migrations/000002_create_users_table.up.sql
+var sqlCreateUsersTable string
+
 type DBRepository struct {
 	dbDsn        string
 	dbConnection *sql.DB
@@ -81,11 +84,75 @@ func (r *DBRepository) CreateTables(ctx context.Context) error {
 			return err
 		}
 	}
+	if !slices.Contains(tables, "users") {
+		_, err = tx.ExecContext(ctx, sqlCreateUsersTable)
+		if err != nil {
+			if rbErr := tx.Rollback(); rbErr != nil {
+				return rbErr
+			}
+			return err
+		}
+	}
 	return tx.Commit()
 }
 
+func (r *DBRepository) Login(ctx context.Context, req models.ApiLoginReq) (int, error) {
+	sqlSelect := "SELECT user_id FROM users WHERE user_login = $1 and user_password = $2"
+	row := r.dbConnection.QueryRowContext(ctx, sqlSelect, req.Login, req.Password)
+	var userID int
+	err := row.Scan(&userID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return 0, ErrUserNotExists
+		}
+		return 0, err
+	}
+	return userID, nil
+}
+
+func (r *DBRepository) Register(ctx context.Context, req models.ApiLoginReq) (int, error) {
+	tx, err := r.dbConnection.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+	sqlSelect := "SELECT MAX(user_id) FROM users;"
+	row := r.dbConnection.QueryRowContext(ctx, sqlSelect)
+	var maxUserId int
+	err = row.Scan(&maxUserId)
+	if err != nil {
+		if err.Error() == ErrColumnIndexZero.Error() {
+			maxUserId = 0
+		} else {
+			return 0, err
+		}
+	}
+	newUserId := maxUserId + 1
+	sqlInsert := "INSERT INTO users (user_id, user_login, user_password) VALUES ($1, $2, $3) ON CONFLICT (user_login) DO NOTHING RETURNING user_id;"
+	var userID string
+	row = tx.QueryRowContext(ctx, sqlInsert, newUserId, req.Login, req.Password)
+	err = row.Scan(&userID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return 0, ErrUserAlreadyExists
+		} else {
+			rbErr := tx.Rollback()
+			if rbErr != nil {
+				return 0, rbErr
+			} else {
+				return 0, err
+			}
+		}
+	}
+	err = tx.Commit()
+	if err != nil {
+		return 0, err
+	}
+	return newUserId, err
+}
+
 func (r *DBRepository) GetUsersID(ctx context.Context) ([]int, error) {
-	sqlSelect := "SELECT DISTINCT user_id FROM tests WHERE user_id IS NOT NULL;"
+	sqlSelect := "SELECT DISTINCT user_id FROM users WHERE user_id IS NOT NULL;"
 	rows, err := r.dbConnection.QueryContext(ctx, sqlSelect)
 	if err != nil {
 		return nil, err
@@ -128,7 +195,7 @@ func (r *DBRepository) GetTests(ctx context.Context, userID int, excludeStarted 
 	var sqlSelect string
 	sqlSelect = "SELECT uuid, test_name, start_time, is_started FROM tests where is_deleted = false"
 	if excludeStarted {
-		sqlSelect += "and is_started=false"
+		sqlSelect += " and is_started=false"
 	}
 	var rows *sql.Rows
 	var err error

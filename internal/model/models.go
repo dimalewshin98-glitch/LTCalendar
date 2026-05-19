@@ -1,5 +1,14 @@
 package models
 
+type ApiLoginReq struct {
+	Login    string `json:"login"`
+	Password string `json:"password"`
+}
+
+type ApiLoginRes struct {
+	UserID int `json:"user_id"`
+}
+
 type ApiAddTestReq struct {
 	TestName         string  `json:"test_name"`
 	StartTime        string  `json:"start_time"`
