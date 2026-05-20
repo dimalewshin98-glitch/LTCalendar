@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/dimalewshin98-glitch/LTCalendar/internal/config"
@@ -47,7 +48,7 @@ func (s *CalendarService) Login(ctx context.Context, req models.ApiLoginReq) (mo
 	if err != nil {
 		return models.ApiLoginRes{}, err
 	}
-	userDecryptedPass, err := decryptPass(userEncryptedPass)
+	userDecryptedPass, err := s.decryptPass(userEncryptedPass)
 	if err != nil {
 		return models.ApiLoginRes{}, repository.ErrUserLogPassIncorrect
 	}
@@ -59,7 +60,7 @@ func (s *CalendarService) Login(ctx context.Context, req models.ApiLoginReq) (mo
 }
 
 func (s *CalendarService) Register(ctx context.Context, req models.ApiLoginReq) (models.ApiLoginRes, error) {
-	encryptedPass, err := encryptPass(req.Password)
+	encryptedPass, err := s.encryptPass(req.Password)
 	if err != nil {
 		return models.ApiLoginRes{}, repository.ErrUserLogPassIncorrect
 	}
@@ -146,10 +147,12 @@ func (s *CalendarService) flushMessages() {
 }
 
 func (s *CalendarService) scheduleTests() {
+	semaphore := make(chan struct{}, s.config.IntegrationRL)
+	var wg sync.WaitGroup
 	for {
-		time.Sleep(5 * time.Second)
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		tests, err := s.repo.GetTests(ctx, 0, true)
+		cancel()
 		if err != nil {
 			logger.Log.Error("Error get tests in thread", zap.String("error", err.Error()))
 		} else {
@@ -159,12 +162,19 @@ func (s *CalendarService) scheduleTests() {
 					logger.Log.Error("Error parse time in thread", zap.String("error", err.Error()))
 				} else {
 					if time.Now().After(startTime) {
-						go s.startTest(tests[i].TestUID)
+						semaphore <- struct{}{}
+						wg.Add(1)
+						go func(testUUID string) {
+							defer wg.Done()
+							defer func() { <-semaphore }()
+							s.startTest(testUUID)
+						}(tests[i].TestUID)
 					}
 				}
 			}
-			cancel()
+			wg.Wait()
 		}
+		time.Sleep(5 * time.Second)
 	}
 }
 
@@ -240,7 +250,7 @@ func (s *CalendarService) countEndTime(startTime time.Time, duration int) string
 	return endTimeStr
 }
 
-func generateRandom(size int) ([]byte, error) {
+func (s *CalendarService) generateRandom(size int) ([]byte, error) {
 	b := make([]byte, size)
 	_, err := rand.Read(b)
 	if err != nil {
@@ -249,13 +259,13 @@ func generateRandom(size int) ([]byte, error) {
 	return b, nil
 }
 
-func getKey() ([]byte, error) {
+func (s *CalendarService) getKey() ([]byte, error) {
 	return base64.StdEncoding.DecodeString(ENCRYPT_KEY_B64)
 }
 
-func encryptPass(pass string) (string, error) {
+func (s *CalendarService) encryptPass(pass string) (string, error) {
 	src := []byte(pass)
-	key, err := getKey()
+	key, err := s.getKey()
 	if err != nil {
 		return "", err
 	}
@@ -267,7 +277,7 @@ func encryptPass(pass string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	nonce, err := generateRandom(aesgcm.NonceSize())
+	nonce, err := s.generateRandom(aesgcm.NonceSize())
 	if err != nil {
 		return "", err
 	}
@@ -277,12 +287,12 @@ func encryptPass(pass string) (string, error) {
 	return encodedToString, nil
 }
 
-func decryptPass(pass string) (string, error) {
+func (s *CalendarService) decryptPass(pass string) (string, error) {
 	passBytes, err := base64.StdEncoding.DecodeString(pass)
 	if err != nil {
 		return "", err
 	}
-	key, err := getKey()
+	key, err := s.getKey()
 	if err != nil {
 		return "", err
 	}

@@ -3,6 +3,7 @@ package config
 import (
 	"flag"
 	"os"
+	"strconv"
 )
 
 type Config struct {
@@ -10,6 +11,7 @@ type Config struct {
 	LogLevel       string
 	DatabaseDsn    string
 	IntegrationDsn string
+	IntegrationRL  int
 }
 
 func NewConfig() *Config {
@@ -17,6 +19,7 @@ func NewConfig() *Config {
 	logLevel := flag.String("l", "info", "log level")
 	databaseDsn := flag.String("d", "localhost:5432", "databse destination (host/host:port)")
 	integrationDsn := flag.String("i", "localhost:2345", "integration destination (host:port)")
+	integrationRL := flag.Int("r", 10, "integration requests rate limiter (int)")
 	flag.Parse()
 	if envServerHostPort := os.Getenv("SERVER_ADDRESS"); envServerHostPort != "" {
 		*serverHostPort = envServerHostPort
@@ -30,11 +33,19 @@ func NewConfig() *Config {
 	if envIntegrationDsn := os.Getenv("INTEGRATION_DSN"); envIntegrationDsn != "" {
 		*integrationDsn = envIntegrationDsn
 	}
+	if envintegrationRL := os.Getenv("INTEGRATION_RL"); envintegrationRL != "" {
+		envintegrationRLInt, err := strconv.Atoi(envintegrationRL)
+		if err != nil {
+		} else {
+			*integrationRL = envintegrationRLInt
+		}
+	}
 	conf := &Config{
 		ServerHostPort: *serverHostPort,
 		LogLevel:       *logLevel,
 		DatabaseDsn:    *databaseDsn,
 		IntegrationDsn: *integrationDsn,
+		IntegrationRL:  *integrationRL,
 	}
 	return conf
 }
