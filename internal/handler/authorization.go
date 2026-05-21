@@ -76,7 +76,8 @@ func CreateUserID(repo repository.RepositoryInterface) (int, error) {
 func AuthMiddleware(h http.Handler, repo repository.RepositoryInterface) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var ctx context.Context
-		if (r.URL.String() == "/api/user/register" || r.URL.String() == "/api/user/login") && r.Method == "POST" {
+		if ((r.URL.String() == "/api/user/register" || r.URL.String() == "/api/user/login") && r.Method == "POST") ||
+			(r.URL.String() == "/ping" && r.Method == "GET") {
 			h.ServeHTTP(w, r)
 		} else {
 			var tokenString string
