@@ -3,16 +3,44 @@ package main
 import (
 	"errors"
 	"io"
+	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/dimalewshin98-glitch/LTCalendar/internal/config"
 	"github.com/dimalewshin98-glitch/LTCalendar/internal/handler"
 	"github.com/dimalewshin98-glitch/LTCalendar/internal/mocks"
+	models "github.com/dimalewshin98-glitch/LTCalendar/internal/model"
+	"github.com/dimalewshin98-glitch/LTCalendar/internal/repository"
 	"github.com/dimalewshin98-glitch/LTCalendar/internal/service"
+	"github.com/golang-jwt/jwt/v4"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 )
+
+type Claims struct {
+	jwt.RegisteredClaims
+	UserID int
+}
+
+const TOKEN_EXP = time.Hour * 3
+const SECRET_KEY = "supersecretkey"
+
+func BuildJWTString(userID int) (string, error) {
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, Claims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(TOKEN_EXP)),
+		},
+		UserID: userID,
+	})
+	tokenString, err := token.SignedString([]byte(SECRET_KEY))
+	if err != nil {
+		return "", err
+	}
+	return tokenString, nil
+}
 
 func TestPingHandler(t *testing.T) {
 	type want struct {
@@ -81,594 +109,556 @@ func TestPingHandler(t *testing.T) {
 	}
 }
 
-// func TestApiShortenBatchHandler(t *testing.T) {
-// 	type want struct {
-// 		contentType     string
-// 		statusCode      int
-// 		response        string
-// 		contentEncoding string
-// 	}
-// 	tests := []struct {
-// 		name            string
-// 		contentType     string
-// 		acceptEncoding  string
-// 		contentEncoding string
-// 		body            string
-// 		request         string
-// 		requestType     string
-// 		want            want
-// 	}{
-// 		{
-// 			name:        "test 1 | Success",
-// 			contentType: "application/json",
-// 			body: `[
-// 						{
-// 							"correlation_id": "aaa",
-// 							"original_url": "urlAA"
-// 						},
-// 						{
-// 							"correlation_id": "aaa",
-// 							"original_url": "urlAA"
-// 						}
-// 					] `,
-// 			want: want{
-// 				contentType: "application/json",
-// 				statusCode:  201,
-// 				response:    `[{"correlation_id":"aaa","short_url":"http://localhost:8080/bjjBrD"},{"correlation_id":"aaa","short_url":"http://localhost:8080/bjjBrD"}]` + "\n",
-// 			},
-// 			request:     "/api/shorten/batch",
-// 			requestType: "POST",
-// 		},
-// 		{
-// 			name:            "test 2 | Success | With encodintg",
-// 			contentType:     "application/json",
-// 			acceptEncoding:  "gzip",
-// 			contentEncoding: "gzip",
-// 			body: `[
-// 						{
-// 							"correlation_id": "aaa",
-// 							"original_url": "urlAA"
-// 						},
-// 						{
-// 							"correlation_id": "aaa",
-// 							"original_url": "urlAA"
-// 						}
-// 					] `,
-// 			want: want{
-// 				contentType:     "application/json",
-// 				statusCode:      201,
-// 				response:        `[{"correlation_id":"aaa","short_url":"http://localhost:8080/bjjBrD"},{"correlation_id":"aaa","short_url":"http://localhost:8080/bjjBrD"}]` + "\n",
-// 				contentEncoding: "gzip",
-// 			},
-// 			request:     "/api/shorten/batch",
-// 			requestType: "POST",
-// 		},
-// 		{
-// 			name:        "test 3 | Unsuccess | Request type error",
-// 			contentType: "application/json",
-// 			body:        `{"url": "https://mockedurl.com"}`,
-// 			want: want{
-// 				contentType: "",
-// 				statusCode:  400,
-// 				response:    "Method not allowed\n",
-// 			},
-// 			request:     "/api/shorten/batch",
-// 			requestType: "GET",
-// 		},
-// 		{
-// 			name:        "test 4 | Unsuccess | Content-Type error",
-// 			contentType: "text/html",
-// 			body:        `{"url": "https://mockedurl.com"}`,
-// 			want: want{
-// 				contentType: "text/plain; charset=utf-8",
-// 				statusCode:  400,
-// 				response:    "Content-Type not allowed\n",
-// 			},
-// 			request:     "/api/shorten/batch",
-// 			requestType: "POST",
-// 		},
-// 		{
-// 			name:        "test 5 | Unsuccess | Batch is empty",
-// 			contentType: "application/json",
-// 			body:        `[]`,
-// 			want: want{
-// 				contentType: "text/plain; charset=utf-8",
-// 				statusCode:  400,
-// 				response:    "Batch is empty\n",
-// 			},
-// 			request:     "/api/shorten/batch",
-// 			requestType: "POST",
-// 		},
-// 		{
-// 			name:        "test 6 | Unsuccess | Json decode error",
-// 			contentType: "application/json",
-// 			body:        `{"url": 123}`,
-// 			want: want{
-// 				contentType: "text/plain; charset=utf-8",
-// 				statusCode:  400,
-// 				response:    "Json request decode error\n",
-// 			},
-// 			request:     "/api/shorten/batch",
-// 			requestType: "POST",
-// 		},
-// 	}
-// 	for _, tt := range tests {
-// 		t.Run(tt.name, func(t *testing.T) {
-// 			ctrl := gomock.NewController(t)
-// 			mockedRepository := mocks.NewMockRepositoryInterface(ctrl)
-// 			mockedRepository.EXPECT().
-// 				GetUsersID(gomock.Any()).
-// 				Return([]int{1, 2, 3}, nil).
-// 				AnyTimes()
-// 			if tt.requestType == "POST" && tt.want.statusCode != 400 {
-// 				mockedRepository.EXPECT().
-// 					Store(gomock.Any(), 4, gomock.Any(), "urlAA").
-// 					Return("bjjBrD", nil).
-// 					Times(2)
-// 			}
-// 			mockedConfig := &config.Config{
-// 				ServerHostPort:     "localhost:8080",
-// 				ShortenURLHostPort: "http://localhost:8080",
-// 			}
-// 			shorterService := service.NewShorterService(mockedRepository, mockedConfig)
-// 			requestsHandler := handler.NewRequestsHandler(shorterService)
-// 			appHandler := http.HandlerFunc(requestsHandler.ApiShortenBatch)
-// 			handlerWithMiddleware := handler.AuthMiddleware(appHandler, mockedRepository)
-// 			request := httptest.NewRequest(tt.requestType, tt.request, strings.NewReader(tt.body))
-// 			request.Header.Set("content-Type", tt.contentType)
-// 			request.Header.Set("Accept-Encoding", tt.acceptEncoding)
-// 			request.Header.Set("Content-Encoding", tt.contentEncoding)
-// 			w := httptest.NewRecorder()
-// 			handlerWithMiddleware.ServeHTTP(w, request)
-// 			resBytes, _ := io.ReadAll(w.Body)
-// 			assert.Equal(t, tt.want.statusCode, w.Result().StatusCode)
-// 			assert.Equal(t, tt.want.response, string(resBytes))
-// 		})
-// 	}
-// }
+func TestRegisterUser(t *testing.T) {
+	type want struct {
+		contentType   string
+		statusCode    int
+		response      string
+		dbResponse    int
+		dbErrResponse error
+	}
+	tests := []struct {
+		name            string
+		contentType     string
+		acceptEncoding  string
+		contentEncoding string
+		body            string
+		request         string
+		requestType     string
+		want            want
+	}{
+		{
+			name:        "test 1 | Success",
+			contentType: "application/json",
+			request:     "/api/register",
+			requestType: "POST",
+			body:        `{"login" : "aaa", "password" : "bbb"}`,
+			want: want{
+				contentType:   "application/json",
+				statusCode:    200,
+				response:      `{"user_id":666}` + "\n",
+				dbResponse:    666,
+				dbErrResponse: nil,
+			},
+		},
+		{
+			name:        "test 2 | Unsuccess | User exists",
+			contentType: "application/json",
+			request:     "/api/register",
+			requestType: "POST",
+			body:        `{"login" : "aaa", "password" : "bbb"}`,
+			want: want{
+				contentType:   "application/json",
+				statusCode:    401,
+				response:      `user already exists` + "\n",
+				dbResponse:    0,
+				dbErrResponse: repository.ErrUserAlreadyExists,
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			mockedRepository := mocks.NewMockRepositoryInterface(ctrl)
+			mockedRepository.EXPECT().
+				Register(gomock.Any(), gomock.Any()).
+				Return(tt.want.dbResponse, tt.want.dbErrResponse)
+			mockedConfig := &config.Config{
+				ServerHostPort: "localhost:8080",
+			}
+			shorterService := service.NewCalendarService(mockedRepository, mockedConfig)
+			requestsHandler := handler.NewRequestsHandler(shorterService)
+			request := httptest.NewRequest(tt.requestType, tt.request, strings.NewReader(tt.body))
+			request.Header.Set("content-Type", tt.contentType)
+			w := httptest.NewRecorder()
+			requestsHandler.RegisterUser(w, request)
+			resBytes, _ := io.ReadAll(w.Body)
+			assert.Equal(t, tt.want.statusCode, w.Result().StatusCode)
+			assert.Equal(t, tt.want.response, string(resBytes))
+		})
+	}
+}
 
-// func TestStorenHandler(t *testing.T) {
-// 	type want struct {
-// 		contentType string
-// 		statusCode  int
-// 		response    string
-// 	}
-// 	tests := []struct {
-// 		name        string
-// 		contentType string
-// 		body        string
-// 		request     string
-// 		requestType string
-// 		want        want
-// 	}{
-// 		{
-// 			name:        "test 1 | Success",
-// 			contentType: "text/plain",
-// 			body:        "urlAA",
-// 			want: want{
-// 				contentType: "text/plain",
-// 				statusCode:  201,
-// 				response:    "http://localhost:8080/bjjBrD",
-// 			},
-// 			request:     "/",
-// 			requestType: "POST",
-// 		},
-// 		{
-// 			name:        "test 2 | Unsuccess | Request type error",
-// 			contentType: "text/plain",
-// 			body:        "https://mockedurl.com",
-// 			want: want{
-// 				contentType: "text/plain; charset=utf-8",
-// 				statusCode:  400,
-// 				response:    "Method not allowed\n",
-// 			},
-// 			request:     "/",
-// 			requestType: "GET",
-// 		},
-// 		{
-// 			name:        "test 3 | Unsuccess | Content-Type error",
-// 			contentType: "text/html",
-// 			body:        "https://mockedurl.com",
-// 			want: want{
-// 				contentType: "text/plain; charset=utf-8",
-// 				statusCode:  400,
-// 				response:    "Content-Type not allowed\n",
-// 			},
-// 			request:     "/",
-// 			requestType: "POST",
-// 		},
-// 		{
-// 			name:        "test 4 | Unsuccess | URL is empty",
-// 			contentType: "text/plain",
-// 			body:        "",
-// 			want: want{
-// 				contentType: "text/plain; charset=utf-8",
-// 				statusCode:  400,
-// 				response:    "URL is empty\n",
-// 			},
-// 			request:     "/",
-// 			requestType: "POST",
-// 		},
-// 	}
-// 	for _, tt := range tests {
-// 		t.Run(tt.name, func(t *testing.T) {
-// 			ctrl := gomock.NewController(t)
-// 			mockedRepository := mocks.NewMockRepositoryInterface(ctrl)
-// 			mockedRepository.EXPECT().
-// 				GetUsersID(gomock.Any()).
-// 				Return([]int{1, 2, 3}, nil).
-// 				AnyTimes()
-// 			if tt.requestType == "POST" && tt.want.statusCode != 400 {
-// 				mockedRepository.EXPECT().
-// 					Store(gomock.Any(), 4, gomock.Any(), "urlAA").
-// 					Return("bjjBrD", nil).
-// 					Times(1)
-// 			}
-// 			mockedConfig := &config.Config{
-// 				ServerHostPort:     "localhost:8080",
-// 				ShortenURLHostPort: "http://localhost:8080",
-// 			}
-// 			shorterService := service.NewShorterService(mockedRepository, mockedConfig)
-// 			requestsHandler := handler.NewRequestsHandler(shorterService)
-// 			appHandler := http.HandlerFunc(requestsHandler.Shorten)
-// 			handlerWithMiddleware := handler.AuthMiddleware(appHandler, mockedRepository)
-// 			request := httptest.NewRequest(tt.requestType, tt.request, strings.NewReader(tt.body))
-// 			request.Header.Set("content-Type", tt.contentType)
-// 			w := httptest.NewRecorder()
-// 			handlerWithMiddleware.ServeHTTP(w, request)
-// 			resBytes, _ := io.ReadAll(w.Body)
-// 			assert.Equal(t, tt.want.statusCode, w.Result().StatusCode)
-// 			assert.Equal(t, tt.want.response, string(resBytes))
-// 			assert.Equal(t, tt.want.contentType, w.Header().Get("Content-Type"))
-// 		})
-// 	}
-// }
+func TestLoginUser(t *testing.T) {
+	type want struct {
+		contentType        string
+		statusCode         int
+		response           string
+		dbResponseUserID   int
+		dbResponseUserPass string
+		dbErrResponse      error
+	}
+	tests := []struct {
+		name            string
+		contentType     string
+		acceptEncoding  string
+		contentEncoding string
+		body            string
+		request         string
+		requestType     string
+		want            want
+	}{
+		{
+			name:        "test 1 | Success",
+			contentType: "application/json",
+			request:     "/api/login",
+			requestType: "POST",
+			body:        `{"login" : "denis", "password" : "superpassword"}`,
+			want: want{
+				contentType:        "application/json",
+				statusCode:         200,
+				response:           `{"user_id":666}` + "\n",
+				dbResponseUserID:   666,
+				dbResponseUserPass: "mZpf6RDw3wgNfxEyjpCozf5DctwSokhs+5ynxDglA3R93+mYK3eeuvc=",
+				dbErrResponse:      nil,
+			},
+		},
+		{
+			name:        "test 2 | Unsuccess | Wrong logpass",
+			contentType: "application/json",
+			request:     "/api/login",
+			requestType: "POST",
+			body:        `{"login" : "aaa", "password" : "bbb"}`,
+			want: want{
+				contentType:        "application/json",
+				statusCode:         401,
+				response:           `login or password incorrect` + "\n",
+				dbResponseUserID:   666,
+				dbResponseUserPass: "password",
+				dbErrResponse:      repository.ErrUserLogPassIncorrect,
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			mockedRepository := mocks.NewMockRepositoryInterface(ctrl)
+			mockedRepository.EXPECT().
+				Login(gomock.Any(), gomock.Any()).
+				Return(tt.want.dbResponseUserID, tt.want.dbResponseUserPass, tt.want.dbErrResponse)
+			mockedConfig := &config.Config{
+				ServerHostPort: "localhost:8080",
+			}
+			shorterService := service.NewCalendarService(mockedRepository, mockedConfig)
+			requestsHandler := handler.NewRequestsHandler(shorterService)
+			request := httptest.NewRequest(tt.requestType, tt.request, strings.NewReader(tt.body))
+			request.Header.Set("content-Type", tt.contentType)
+			w := httptest.NewRecorder()
+			requestsHandler.LoginUser(w, request)
+			resBytes, _ := io.ReadAll(w.Body)
+			assert.Equal(t, tt.want.statusCode, w.Result().StatusCode)
+			assert.Equal(t, tt.want.response, string(resBytes))
+		})
+	}
+}
 
-// func TestGetURLHandler(t *testing.T) {
-// 	type want struct {
-// 		statusCode int
-// 		response   string
-// 		location   string
-// 	}
-// 	tests := []struct {
-// 		name        string
-// 		contentType string
-// 		request     string
-// 		requestType string
-// 		want        want
-// 	}{
-// 		{
-// 			name:        "test 1 | Success",
-// 			contentType: "text/plain",
-// 			want: want{
-// 				statusCode: 307,
-// 				response:   "",
-// 				location:   "https://mockedurl.com",
-// 			},
-// 			request:     "/AbCdEf",
-// 			requestType: "GET",
-// 		},
-// 		{
-// 			name:        "test 2 | Unsuccess | Request type error",
-// 			contentType: "text/plain",
-// 			want: want{
-// 				statusCode: 400,
-// 				response:   "Method not allowed\n",
-// 				location:   "",
-// 			},
-// 			request:     "/AbCdEf",
-// 			requestType: "POST",
-// 		},
-// 		{
-// 			name:        "test 3 | Unsuccess | Content-Type error",
-// 			contentType: "text/html",
-// 			want: want{
-// 				statusCode: 400,
-// 				response:   "Content-Type not allowed\n",
-// 				location:   "",
-// 			},
-// 			request:     "/AbCdEf",
-// 			requestType: "GET",
-// 		},
-// 	}
-// 	for _, tt := range tests {
-// 		t.Run(tt.name, func(t *testing.T) {
-// 			ctrl := gomock.NewController(t)
-// 			mockedRepository := mocks.NewMockRepositoryInterface(ctrl)
-// 			mockedRepository.EXPECT().
-// 				GetUsersID(gomock.Any()).
-// 				Return([]int{1, 2, 3}, nil).
-// 				AnyTimes()
-// 			if tt.requestType == "GET" && tt.want.statusCode != 400 {
-// 				mockedRepository.EXPECT().
-// 					Get(gomock.Any(), gomock.Any()).
-// 					Return("https://mockedurl.com", nil).
-// 					Times(1)
-// 			}
-// 			mockedConfig := &config.Config{
-// 				ServerHostPort:     "localhost:8080",
-// 				ShortenURLHostPort: "http://localhost:8080",
-// 			}
-// 			shorterService := service.NewShorterService(mockedRepository, mockedConfig)
-// 			requestsHandler := handler.NewRequestsHandler(shorterService)
-// 			appHandler := http.HandlerFunc(requestsHandler.GetURL)
-// 			handlerWithMiddleware := handler.AuthMiddleware(appHandler, mockedRepository)
-// 			request := httptest.NewRequest(tt.requestType, tt.request, strings.NewReader(""))
-// 			request.Header.Set("content-Type", tt.contentType)
-// 			w := httptest.NewRecorder()
-// 			handlerWithMiddleware.ServeHTTP(w, request)
-// 			resBytes, _ := io.ReadAll(w.Body)
-// 			assert.Equal(t, tt.want.statusCode, w.Result().StatusCode)
-// 			assert.Equal(t, tt.want.response, string(resBytes))
-// 			assert.Equal(t, tt.want.location, w.Header().Get("Location"))
-// 		})
-// 	}
-// }
+func TestAddTest(t *testing.T) {
+	type want struct {
+		contentType   string
+		statusCode    int
+		response      string
+		dbResponse    string
+		dbErrResponse error
+	}
+	tests := []struct {
+		name            string
+		contentType     string
+		acceptEncoding  string
+		contentEncoding string
+		body            string
+		request         string
+		requestType     string
+		want            want
+	}{
+		{
+			name:        "test 1 | Success",
+			contentType: "application/json",
+			request:     "/api/tests",
+			requestType: "POST",
+			body: `{
+						"test_name": "STABILITY",
+						"start_time": "2026-01-02T15:04:05+03:00",
+						"duration": 12,
+						"tps": 66456.666,
+						"additional_params": "some some some"
+					}`,
+			want: want{
+				contentType:   "application/json",
+				statusCode:    201,
+				response:      `{"test_uuid":"testuuid"}` + "\n",
+				dbResponse:    "testuuid",
+				dbErrResponse: nil,
+			},
+		},
+		{
+			name:        "test 2 | Unsuccess | DB error",
+			contentType: "application/json",
+			request:     "/api/tests",
+			requestType: "POST",
+			body: `{
+						"test_name": "STABILITY",
+						"start_time": "2026-01-02T15:04:05+03:00",
+						"duration": 12,
+						"tps": 66456.666,
+						"additional_params": "some some some"
+					}`,
+			want: want{
+				contentType:   "application/json",
+				statusCode:    400,
+				response:      `Some DB error` + "\n",
+				dbResponse:    "",
+				dbErrResponse: errors.New("Some DB error"),
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			mockedRepository := mocks.NewMockRepositoryInterface(ctrl)
+			mockedRepository.EXPECT().
+				AddTest(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+				Return(tt.want.dbResponse, tt.want.dbErrResponse)
+			mockedConfig := &config.Config{
+				ServerHostPort: "localhost:8080",
+			}
+			shorterService := service.NewCalendarService(mockedRepository, mockedConfig)
+			requestsHandler := handler.NewRequestsHandler(shorterService)
+			appHandler := http.HandlerFunc(requestsHandler.AddTest)
+			handlerWithMiddleware := handler.AuthMiddleware(appHandler, mockedRepository)
+			request := httptest.NewRequest(tt.requestType, tt.request, strings.NewReader(tt.body))
+			request.Header.Set("content-Type", tt.contentType)
+			token, _ := BuildJWTString(666)
+			cookie := &http.Cookie{
+				Name:  "token",
+				Value: token,
+				Path:  "/api/",
+			}
+			request.AddCookie(cookie)
+			w := httptest.NewRecorder()
+			handlerWithMiddleware.ServeHTTP(w, request)
+			resBytes, _ := io.ReadAll(w.Body)
+			assert.Equal(t, tt.want.statusCode, w.Result().StatusCode)
+			assert.Equal(t, tt.want.response, string(resBytes))
+		})
+	}
+}
 
-// func TestGetUserURLsHandler(t *testing.T) {
-// 	type want struct {
-// 		statusCode int
-// 		response   string
-// 		location   string
-// 	}
-// 	tests := []struct {
-// 		name        string
-// 		contentType string
-// 		request     string
-// 		requestType string
-// 		want        want
-// 	}{
-// 		{
-// 			name: "test 1 | Success",
-// 			want: want{
-// 				statusCode: 200,
-// 				response:   `[{"short_url":"a","original_url":"b"},{"short_url":"c","original_url":"d"}]` + "\n",
-// 			},
-// 			request:     "/api/user/urls",
-// 			requestType: "GET",
-// 		},
-// 		{
-// 			name:        "test 2 | Unsuccess | No content",
-// 			contentType: "text/html",
-// 			want: want{
-// 				statusCode: 204,
-// 				response:   "",
-// 				location:   "",
-// 			},
-// 			request:     "/api/user/urls",
-// 			requestType: "GET",
-// 		},
-// 	}
-// 	for _, tt := range tests {
-// 		t.Run(tt.name, func(t *testing.T) {
-// 			ctrl := gomock.NewController(t)
-// 			mockedRepository := mocks.NewMockRepositoryInterface(ctrl)
-// 			mockedRepository.EXPECT().
-// 				GetUsersID(gomock.Any()).
-// 				Return([]int{1, 2, 3}, nil).
-// 				AnyTimes()
-// 			if tt.requestType == "GET" && tt.want.statusCode != 400 {
-// 				var res models.ApiUserUrlsRes
-// 				if tt.want.statusCode == 200 {
-// 					res = append(res, models.UserUrlRes{ShortURL: "a", OriginalURL: "b"})
-// 					res = append(res, models.UserUrlRes{ShortURL: "c", OriginalURL: "d"})
-// 				}
-// 				mockedRepository.EXPECT().
-// 					GetUserUrls(gomock.Any(), gomock.Any()).
-// 					Return(res, nil).
-// 					Times(1)
-// 			}
-// 			mockedConfig := &config.Config{
-// 				ServerHostPort:     "localhost:8080",
-// 				ShortenURLHostPort: "http://localhost:8080",
-// 			}
-// 			shorterService := service.NewShorterService(mockedRepository, mockedConfig)
-// 			requestsHandler := handler.NewRequestsHandler(shorterService)
-// 			appHandler := http.HandlerFunc(requestsHandler.ApiUserUrls)
-// 			handlerWithMiddleware := handler.AuthMiddleware(appHandler, mockedRepository)
-// 			request := httptest.NewRequest(tt.requestType, tt.request, strings.NewReader(""))
-// 			w := httptest.NewRecorder()
-// 			handlerWithMiddleware.ServeHTTP(w, request)
-// 			resBytes, _ := io.ReadAll(w.Body)
-// 			assert.Equal(t, tt.want.statusCode, w.Result().StatusCode)
-// 			assert.Equal(t, tt.want.response, string(resBytes))
-// 		})
-// 	}
-// }
+func TestUpdateTest(t *testing.T) {
+	type want struct {
+		contentType   string
+		statusCode    int
+		response      string
+		dbResponse    string
+		dbErrResponse error
+	}
+	tests := []struct {
+		name            string
+		contentType     string
+		acceptEncoding  string
+		contentEncoding string
+		body            string
+		request         string
+		requestType     string
+		want            want
+	}{
+		{
+			name:        "test 1 | Success",
+			contentType: "application/json",
+			request:     "/api/tests",
+			requestType: "PUT",
+			body: `{
+						"test_name": "STABILITY",
+						"start_time": "2026-01-02T15:04:05+03:00",
+						"end_time": "2026-01-03T15:04:05+03:00",
+						"tps": 6.6,
+						"additional_params": "some some some"
+					}`,
+			want: want{
+				contentType:   "application/json",
+				statusCode:    202,
+				response:      ``,
+				dbResponse:    "testuuid",
+				dbErrResponse: nil,
+			},
+		},
+		{
+			name:        "test 2 | Unsuccess | Test already deleted",
+			contentType: "application/json",
+			request:     "/api/tests",
+			requestType: "PUT",
+			body: `{
+						"test_name": "STABILITY",
+						"start_time": "2026-01-02T15:04:05+03:00",
+						"end_time": "2026-01-03T15:04:05+03:00",
+						"tps": 6.6,
+						"additional_params": "some some some"
+					}`,
+			want: want{
+				contentType:   "application/json",
+				statusCode:    410,
+				response:      ``,
+				dbResponse:    "",
+				dbErrResponse: repository.ErrTestDeleted,
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			mockedRepository := mocks.NewMockRepositoryInterface(ctrl)
+			mockedRepository.EXPECT().
+				UpdateTest(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+				Return(tt.want.dbResponse, tt.want.dbErrResponse)
+			mockedConfig := &config.Config{
+				ServerHostPort: "localhost:8080",
+			}
+			shorterService := service.NewCalendarService(mockedRepository, mockedConfig)
+			requestsHandler := handler.NewRequestsHandler(shorterService)
+			appHandler := http.HandlerFunc(requestsHandler.UpdateTest)
+			handlerWithMiddleware := handler.AuthMiddleware(appHandler, mockedRepository)
+			request := httptest.NewRequest(tt.requestType, tt.request, strings.NewReader(tt.body))
+			request.Header.Set("content-Type", tt.contentType)
+			token, _ := BuildJWTString(666)
+			cookie := &http.Cookie{
+				Name:  "token",
+				Value: token,
+				Path:  "/api/",
+			}
+			request.AddCookie(cookie)
+			w := httptest.NewRecorder()
+			handlerWithMiddleware.ServeHTTP(w, request)
+			resBytes, _ := io.ReadAll(w.Body)
+			assert.Equal(t, tt.want.statusCode, w.Result().StatusCode)
+			assert.Equal(t, tt.want.response, string(resBytes))
+		})
+	}
+}
 
-// func TestDeleteURLsHandler(t *testing.T) {
-// 	type want struct {
-// 		contentType     string
-// 		statusCode      int
-// 		response        string
-// 		contentEncoding string
-// 	}
-// 	tests := []struct {
-// 		name            string
-// 		contentType     string
-// 		acceptEncoding  string
-// 		contentEncoding string
-// 		body            string
-// 		request         string
-// 		requestType     string
-// 		want            want
-// 	}{
-// 		{
-// 			name:        "test 1 | Success",
-// 			contentType: "application/json",
-// 			body:        `["aaa"]`,
-// 			want: want{
-// 				contentType: "application/json",
-// 				statusCode:  202,
-// 				response:    ``,
-// 			},
-// 			request:     "/api/user/urls",
-// 			requestType: "DELETE",
-// 		},
-// 	}
-// 	for _, tt := range tests {
-// 		t.Run(tt.name, func(t *testing.T) {
-// 			ctrl := gomock.NewController(t)
-// 			mockedRepository := mocks.NewMockRepositoryInterface(ctrl)
-// 			mockedRepository.EXPECT().
-// 				GetUsersID(gomock.Any()).
-// 				Return([]int{1, 2, 3}, nil).
-// 				AnyTimes()
-// 			mockedRepository.EXPECT().
-// 				SetDelete(gomock.Any(), 3, "aaa").
-// 				Return("a", nil).
-// 				AnyTimes()
-// 			mockedConfig := &config.Config{
-// 				ServerHostPort:     "localhost:8080",
-// 				ShortenURLHostPort: "http://localhost:8080",
-// 			}
-// 			shorterService := service.NewShorterService(mockedRepository, mockedConfig)
-// 			requestsHandler := handler.NewRequestsHandler(shorterService)
-// 			appHandler := http.HandlerFunc(requestsHandler.Delete)
-// 			handlerWithMiddleware := handler.AuthMiddleware(appHandler, mockedRepository)
-// 			request := httptest.NewRequest(tt.requestType, tt.request, strings.NewReader(tt.body))
-// 			request.Header.Set("content-Type", tt.contentType)
-// 			w := httptest.NewRecorder()
-// 			handlerWithMiddleware.ServeHTTP(w, request)
-// 			resBytes, _ := io.ReadAll(w.Body)
-// 			assert.Equal(t, tt.want.statusCode, w.Result().StatusCode)
-// 			assert.Equal(t, tt.want.response, string(resBytes))
-// 		})
-// 	}
-// }
-// func TestApiStorenHandler(t *testing.T) {
-// 	type want struct {
-// 		contentType     string
-// 		statusCode      int
-// 		response        string
-// 		contentEncoding string
-// 	}
-// 	tests := []struct {
-// 		name            string
-// 		contentType     string
-// 		acceptEncoding  string
-// 		contentEncoding string
-// 		body            string
-// 		request         string
-// 		requestType     string
-// 		want            want
-// 	}{
-// 		{
-// 			name:        "test 1 | Success",
-// 			contentType: "application/json",
-// 			body:        `{"url": "https://mockedurl.com"}`,
-// 			want: want{
-// 				contentType: "application/json",
-// 				statusCode:  201,
-// 				response:    `{"result":"http://localhost:8080/AbCdEf"}` + "\n",
-// 			},
-// 			request:     "/api/shorten",
-// 			requestType: "POST",
-// 		},
-// 		{
-// 			name:            "test 2 | Success | With encodintg",
-// 			contentType:     "application/json",
-// 			acceptEncoding:  "gzip",
-// 			contentEncoding: "gzip",
-// 			body:            `{"url": "https://mockedurl.com"}`,
-// 			want: want{
-// 				contentType:     "application/json",
-// 				statusCode:      201,
-// 				response:        `{"result":"http://localhost:8080/AbCdEf"}` + "\n",
-// 				contentEncoding: "gzip",
-// 			},
-// 			request:     "/api/shorten",
-// 			requestType: "POST",
-// 		},
-// 		{
-// 			name:        "test 3 | Unsuccess | Request type error",
-// 			contentType: "application/json",
-// 			body:        `{"url": "https://mockedurl.com"}`,
-// 			want: want{
-// 				contentType: "",
-// 				statusCode:  405,
-// 				response:    "",
-// 			},
-// 			request:     "/api/shorten",
-// 			requestType: "GET",
-// 		},
-// 		{
-// 			name:        "test 4 | Unsuccess | Content-Type error",
-// 			contentType: "text/html",
-// 			body:        `{"url": "https://mockedurl.com"}`,
-// 			want: want{
-// 				contentType: "text/plain; charset=utf-8",
-// 				statusCode:  400,
-// 				response:    "Content-Type not allowed\n",
-// 			},
-// 			request:     "/api/shorten",
-// 			requestType: "POST",
-// 		},
-// 		{
-// 			name:        "test 5 | Unsuccess | URL is empty",
-// 			contentType: "application/json",
-// 			body:        `{"url": ""}`,
-// 			want: want{
-// 				contentType: "text/plain; charset=utf-8",
-// 				statusCode:  400,
-// 				response:    "URL is empty\n",
-// 			},
-// 			request:     "/api/shorten",
-// 			requestType: "POST",
-// 		},
-// 		{
-// 			name:        "test 6 | Unsuccess | Json decode error",
-// 			contentType: "application/json",
-// 			body:        `{"url": 123}`,
-// 			want: want{
-// 				contentType: "text/plain; charset=utf-8",
-// 				statusCode:  400,
-// 				response:    "Json request decode error\n",
-// 			},
-// 			request:     "/api/shorten",
-// 			requestType: "POST",
-// 		},
-// 	}
-// 	repository := repository.NewInmemoryRepository()
-// 	mockedRepository := &MockedInmemoryRepository{repository}
-// 	mockedConfig := &config.Config{
-// 		ServerHostPort:     "localhost:8080",
-// 		ShortenURLHostPort: "http://localhost:8080",
-// 	}
-// 	app := NewApp(mockedRepository, *mockedConfig)
-// 	appHandler := app.GetHandler()
-// 	srv := httptest.NewServer((handler.GzipMiddleware(handler.AuthMiddleware(appHandler, repository))))
-// 	defer srv.Close()
-// 	for _, tt := range tests {
-// 		t.Run(tt.name, func(t *testing.T) {
-// 			var buf *bytes.Buffer
-// 			if tt.contentEncoding == "gzip" {
-// 				var b bytes.Buffer
-// 				zb := gzip.NewWriter(&b)
-// 				zb.Write([]byte(tt.body))
-// 				zb.Close()
-// 				buf = &b
-// 			} else {
-// 				buf = bytes.NewBufferString(tt.body)
-// 			}
-// 			r := httptest.NewRequest(tt.requestType, srv.URL+tt.request, buf)
-// 			r.RequestURI = ""
-// 			r.Header.Set("Content-Type", tt.contentType)
-// 			r.Header.Set("Accept-Encoding", tt.acceptEncoding)
-// 			r.Header.Set("Content-Encoding", tt.contentEncoding)
-// 			resp, _ := http.DefaultClient.Do(r)
-// 			var resBytes []byte
-// 			if tt.acceptEncoding == "gzip" {
-// 				zr, _ := gzip.NewReader(resp.Body)
-// 				resBytes, _ = io.ReadAll(zr)
-// 			} else {
-// 				resBytes, _ = io.ReadAll(resp.Body)
-// 			}
-// 			assert.Equal(t, tt.want.statusCode, resp.StatusCode)
-// 			assert.Equal(t, tt.want.response, string(resBytes))
-// 			assert.Equal(t, tt.want.contentType, resp.Header.Get("Content-Type"))
-// 			assert.Equal(t, tt.want.contentEncoding, resp.Header.Get("Content-Encoding"))
-// 			defer resp.Body.Close()
-// 		})
-// 	}
-// }
+func TestDeleteTest(t *testing.T) {
+	type want struct {
+		contentType   string
+		statusCode    int
+		response      string
+		dbResponse    string
+		dbErrResponse error
+	}
+	tests := []struct {
+		name            string
+		contentType     string
+		acceptEncoding  string
+		contentEncoding string
+		body            string
+		request         string
+		requestType     string
+		want            want
+	}{
+		{
+			name:        "test 1 | Success",
+			contentType: "application/json",
+			request:     "/api/tests/sometestuuid",
+			requestType: "DELETE",
+			body:        ``,
+			want: want{
+				contentType:   "application/json",
+				statusCode:    202,
+				response:      ``,
+				dbResponse:    "testuuid",
+				dbErrResponse: nil,
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			mockedRepository := mocks.NewMockRepositoryInterface(ctrl)
+			mockedConfig := &config.Config{
+				ServerHostPort: "localhost:8080",
+			}
+			shorterService := service.NewCalendarService(mockedRepository, mockedConfig)
+			requestsHandler := handler.NewRequestsHandler(shorterService)
+			appHandler := http.HandlerFunc(requestsHandler.DeleteTest)
+			handlerWithMiddleware := handler.AuthMiddleware(appHandler, mockedRepository)
+			request := httptest.NewRequest(tt.requestType, tt.request, strings.NewReader(tt.body))
+			request.Header.Set("content-Type", tt.contentType)
+			token, _ := BuildJWTString(666)
+			cookie := &http.Cookie{
+				Name:  "token",
+				Value: token,
+				Path:  "/api/",
+			}
+			request.AddCookie(cookie)
+			w := httptest.NewRecorder()
+			handlerWithMiddleware.ServeHTTP(w, request)
+			resBytes, _ := io.ReadAll(w.Body)
+			assert.Equal(t, tt.want.statusCode, w.Result().StatusCode)
+			assert.Equal(t, tt.want.response, string(resBytes))
+		})
+	}
+}
+
+func TestGetTest(t *testing.T) {
+	type want struct {
+		contentType   string
+		statusCode    int
+		response      string
+		dbResponse    models.ApiGetTestRes
+		dbErrResponse error
+	}
+	tests := []struct {
+		name            string
+		contentType     string
+		acceptEncoding  string
+		contentEncoding string
+		body            string
+		request         string
+		requestType     string
+		want            want
+	}{
+		{
+			name:        "test 1 | Success",
+			contentType: "application/json",
+			request:     "/api/tests/sometestuuid",
+			requestType: "GET",
+			body:        ``,
+			want: want{
+				contentType: "application/json",
+				statusCode:  200,
+				response:    `{"test_name":"STABILITY","start_time":"2026-01-02T15:04:05+03:00","end_time":"2026-01-02T03:20:05+03:00","tps":666.66,"additional_params":"some some some","is_started":false}` + "\n",
+				dbResponse: models.ApiGetTestRes{
+					TestName:         "STABILITY",
+					StartTime:        "2026-01-02T15:04:05+03:00",
+					EndTime:          "2026-01-02T03:20:05+03:00",
+					TPS:              666.66,
+					AdditionalParams: "some some some",
+					IsStarted:        false},
+				dbErrResponse: nil,
+			},
+		},
+		{
+			name:        "test 2 | Unsuccess | Test not exists",
+			contentType: "application/json",
+			request:     "/api/tests/sometestuuid",
+			requestType: "GET",
+			body:        ``,
+			want: want{
+				contentType:   "application/json",
+				statusCode:    404,
+				response:      ``,
+				dbResponse:    models.ApiGetTestRes{},
+				dbErrResponse: repository.ErrTestNotExists,
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			mockedRepository := mocks.NewMockRepositoryInterface(ctrl)
+			mockedRepository.EXPECT().
+				GetTest(gomock.Any(), gomock.Any(), gomock.Any()).
+				Return(tt.want.dbResponse, tt.want.dbErrResponse)
+			mockedConfig := &config.Config{
+				ServerHostPort: "localhost:8080",
+			}
+			shorterService := service.NewCalendarService(mockedRepository, mockedConfig)
+			requestsHandler := handler.NewRequestsHandler(shorterService)
+			appHandler := http.HandlerFunc(requestsHandler.GetTest)
+			handlerWithMiddleware := handler.AuthMiddleware(appHandler, mockedRepository)
+			request := httptest.NewRequest(tt.requestType, tt.request, nil)
+			request.Header.Set("content-Type", tt.contentType)
+			token, _ := BuildJWTString(666)
+			cookie := &http.Cookie{
+				Name:  "token",
+				Value: token,
+				Path:  "/api/",
+			}
+			request.AddCookie(cookie)
+			w := httptest.NewRecorder()
+			handlerWithMiddleware.ServeHTTP(w, request)
+			resBytes, _ := io.ReadAll(w.Body)
+			assert.Equal(t, tt.want.statusCode, w.Result().StatusCode)
+			assert.Equal(t, tt.want.response, string(resBytes))
+		})
+	}
+}
+
+func TestGetTests(t *testing.T) {
+	type want struct {
+		contentType   string
+		statusCode    int
+		response      string
+		dbResponse    models.ApiGetTestsRes
+		dbErrResponse error
+	}
+	tests := []struct {
+		name            string
+		contentType     string
+		acceptEncoding  string
+		contentEncoding string
+		body            string
+		request         string
+		requestType     string
+		want            want
+	}{
+		{
+			name:        "test 1 | Success",
+			contentType: "application/json",
+			request:     "/api/tests/sometestuuid",
+			requestType: "GET",
+			body:        ``,
+			want: want{
+				contentType: "application/json",
+				statusCode:  200,
+				response:    `[{"test_uuid":"","test_name":"STABILITY","start_time":"2026-01-02T15:04:05+03:00","is_started":false}]` + "\n",
+				dbResponse: models.ApiGetTestsRes{{
+					TestName:  "STABILITY",
+					StartTime: "2026-01-02T15:04:05+03:00",
+					IsStarted: false}},
+				dbErrResponse: nil,
+			},
+		},
+		{
+			name:        "test 2 | Unsuccess | DB error",
+			contentType: "application/json",
+			request:     "/api/tests/sometestuuid",
+			requestType: "GET",
+			body:        ``,
+			want: want{
+				contentType:   "application/json",
+				statusCode:    400,
+				response:      `Some DB error` + "\n",
+				dbResponse:    models.ApiGetTestsRes{},
+				dbErrResponse: errors.New("Some DB error"),
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			mockedRepository := mocks.NewMockRepositoryInterface(ctrl)
+			mockedRepository.EXPECT().
+				GetTests(gomock.Any(), gomock.Any(), gomock.Any()).
+				Return(tt.want.dbResponse, tt.want.dbErrResponse)
+			mockedConfig := &config.Config{
+				ServerHostPort: "localhost:8080",
+			}
+			shorterService := service.NewCalendarService(mockedRepository, mockedConfig)
+			requestsHandler := handler.NewRequestsHandler(shorterService)
+			appHandler := http.HandlerFunc(requestsHandler.GetTests)
+			handlerWithMiddleware := handler.AuthMiddleware(appHandler, mockedRepository)
+			request := httptest.NewRequest(tt.requestType, tt.request, nil)
+			request.Header.Set("content-Type", tt.contentType)
+			token, _ := BuildJWTString(666)
+			cookie := &http.Cookie{
+				Name:  "token",
+				Value: token,
+				Path:  "/api/",
+			}
+			request.AddCookie(cookie)
+			w := httptest.NewRecorder()
+			handlerWithMiddleware.ServeHTTP(w, request)
+			resBytes, _ := io.ReadAll(w.Body)
+			assert.Equal(t, tt.want.statusCode, w.Result().StatusCode)
+			assert.Equal(t, tt.want.response, string(resBytes))
+		})
+	}
+}

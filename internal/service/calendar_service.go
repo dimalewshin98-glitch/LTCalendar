@@ -39,7 +39,9 @@ func NewCalendarService(repo repository.RepositoryInterface, config *config.Conf
 		msgChan: make(chan models.TestDeleteMessage, 1024),
 	}
 	go serviceInstance.flushMessages()
-	go serviceInstance.scheduleTests()
+	if config.EnabledTestStarter {
+		go serviceInstance.scheduleTests()
+	}
 	return serviceInstance
 }
 

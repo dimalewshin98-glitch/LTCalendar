@@ -2,6 +2,7 @@ package main
 
 import (
 	"net/http"
+	"strconv"
 
 	"github.com/dimalewshin98-glitch/LTCalendar/internal/config"
 	"github.com/dimalewshin98-glitch/LTCalendar/internal/handler"
@@ -18,6 +19,7 @@ func main() {
 		panic(err)
 	}
 	repo, err = repository.NewDBRepository(cfg.DatabaseDsn)
+	logger.Log.Info("Start tests in thread", zap.String("enabled", strconv.FormatBool(cfg.EnabledTestStarter)))
 	logger.Log.Info("Repository adress set to", zap.String("type", cfg.DatabaseDsn))
 	if err != nil {
 		panic(err)

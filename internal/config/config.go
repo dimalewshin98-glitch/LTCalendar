@@ -7,11 +7,12 @@ import (
 )
 
 type Config struct {
-	ServerHostPort string
-	LogLevel       string
-	DatabaseDsn    string
-	IntegrationDsn string
-	IntegrationRL  int
+	ServerHostPort     string
+	LogLevel           string
+	DatabaseDsn        string
+	EnabledTestStarter bool
+	IntegrationDsn     string
+	IntegrationRL      int
 }
 
 func NewConfig() *Config {
@@ -20,6 +21,7 @@ func NewConfig() *Config {
 	databaseDsn := flag.String("d", "localhost:5432", "databse destination (host/host:port)")
 	integrationDsn := flag.String("i", "localhost:2345", "integration destination (host:port)")
 	integrationRL := flag.Int("r", 10, "integration requests rate limiter (int)")
+	enabledTestStarter := flag.Bool("s", false, "enable start tests integration (bool)")
 	flag.Parse()
 	if envServerHostPort := os.Getenv("SERVER_ADDRESS"); envServerHostPort != "" {
 		*serverHostPort = envServerHostPort
@@ -40,12 +42,20 @@ func NewConfig() *Config {
 			*integrationRL = envintegrationRLInt
 		}
 	}
+	if envEnabledTestStarter := os.Getenv("INTEGRATION_RL"); envEnabledTestStarter != "" {
+		envEnabledTestStarterBool, err := strconv.ParseBool(envEnabledTestStarter)
+		if err != nil {
+		} else {
+			*enabledTestStarter = envEnabledTestStarterBool
+		}
+	}
 	conf := &Config{
-		ServerHostPort: *serverHostPort,
-		LogLevel:       *logLevel,
-		DatabaseDsn:    *databaseDsn,
-		IntegrationDsn: *integrationDsn,
-		IntegrationRL:  *integrationRL,
+		ServerHostPort:     *serverHostPort,
+		LogLevel:           *logLevel,
+		DatabaseDsn:        *databaseDsn,
+		IntegrationDsn:     *integrationDsn,
+		IntegrationRL:      *integrationRL,
+		EnabledTestStarter: *enabledTestStarter,
 	}
 	return conf
 }
