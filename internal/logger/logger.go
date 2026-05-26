@@ -1,28 +1,26 @@
 package logger
 
 import (
+	"log/slog"
 	"net/http"
+	"os"
 	"strconv"
 	"time"
-
-	"go.uber.org/zap"
 )
 
-var Log *zap.Logger = zap.NewNop()
+var Log *slog.Logger
 
 func Initialize(level string) error {
-	lvl, err := zap.ParseAtomicLevel(level)
-	if err != nil {
+	var logLevel slog.Level
+	if err := logLevel.UnmarshalText([]byte(level)); err != nil {
 		return err
 	}
-	cfg := zap.NewDevelopmentConfig()
-	cfg.Level = lvl
-	zl, err := cfg.Build()
-	if err != nil {
-		return err
-	}
-	Log = zl
-	return err
+	var handler slog.Handler
+	handler = slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: logLevel,
+	})
+	Log = slog.New(handler)
+	return nil
 }
 
 type loggedResponseWriter struct {
@@ -51,14 +49,12 @@ func RequestLogger(h http.Handler) http.Handler {
 		h.ServeHTTP(lw, r)
 		duration := strconv.FormatInt(time.Since(start).Milliseconds(), 10)
 		Log.Info("got incoming HTTP request",
-			zap.String("uri", uri),
-			zap.String("method", method),
-			zap.String("duration", duration+"ms"),
-		)
+			"uri", uri,
+			"method", method,
+			"duration", duration+"ms")
 		Log.Info("send HTTP response",
-			zap.String("status", strconv.Itoa(lw.statusCode)),
-			zap.String("body size", strconv.Itoa(lw.bodySize)),
-		)
+			"status", strconv.Itoa(lw.statusCode),
+			"body size", strconv.Itoa(lw.bodySize))
 	})
 
 }

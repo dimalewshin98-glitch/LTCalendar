@@ -18,10 +18,7 @@ import (
 	models "github.com/dimalewshin98-glitch/LTCalendar/internal/model"
 	"github.com/dimalewshin98-glitch/LTCalendar/internal/repository"
 	"github.com/google/uuid"
-	"go.uber.org/zap"
 )
-
-const ENCRYPT_KEY_B64 = "CCHki0M3gumr8P8fs6I7IkyHHdUeNpEbV1/lpbQOtGg="
 
 var ErrParsingDate = errors.New("Error parsing date. Need date format: YYYY-MM-DDTHH:MM:SS±HH:MM")
 var ErrCompareDate = errors.New("End time must be after start time")
@@ -45,20 +42,21 @@ func NewCalendarService(repo repository.RepositoryInterface, config *config.Conf
 	return serviceInstance
 }
 
-func (s *CalendarService) Login(ctx context.Context, req models.ApiLoginReq) (models.ApiLoginRes, error) {
+func (s *CalendarService) Login(ctx context.Context, req models.ApiLoginReq) (models.ApiLoginRes, string, error) {
 	userID, userEncryptedPass, err := s.repo.Login(ctx, req)
 	if err != nil {
-		return models.ApiLoginRes{}, err
+		return models.ApiLoginRes{}, "", err
 	}
 	userDecryptedPass, err := s.decryptPass(userEncryptedPass)
 	if err != nil {
-		return models.ApiLoginRes{}, repository.ErrUserLogPassIncorrect
+		return models.ApiLoginRes{}, "", repository.ErrUserLogPassIncorrect
 	}
 	if userDecryptedPass != req.Password {
-		return models.ApiLoginRes{}, repository.ErrUserLogPassIncorrect
+		return models.ApiLoginRes{}, "", repository.ErrUserLogPassIncorrect
 	}
 	res := models.ApiLoginRes{UserID: userID}
-	return res, err
+	secretKey := s.config.SecretKey
+	return res, secretKey, err
 }
 
 func (s *CalendarService) Register(ctx context.Context, req models.ApiLoginReq) (models.ApiLoginRes, error) {
@@ -156,12 +154,12 @@ func (s *CalendarService) scheduleTests() {
 		tests, err := s.repo.GetTests(ctx, 0, true)
 		cancel()
 		if err != nil {
-			logger.Log.Error("Error get tests in thread", zap.String("error", err.Error()))
+			logger.Log.Error("Error get tests in thread", "error", err.Error())
 		} else {
 			for i := range tests {
 				startTime, err := s.parseTime(tests[i].StartTime)
 				if err != nil {
-					logger.Log.Error("Error parse time in thread", zap.String("error", err.Error()))
+					logger.Log.Error("Error parse time in thread", "error", err.Error())
 				} else {
 					if time.Now().After(startTime) {
 						semaphore <- struct{}{}
@@ -187,9 +185,8 @@ func (s *CalendarService) startTest(testUUID string) {
 	reqData, err := json.Marshal(models.ReqStartTest{TestName: test.TestName, TPS: test.TPS, AdditionalParams: test.AdditionalParams})
 	if err != nil {
 		logger.Log.Error("Error start test in thread",
-			zap.String("testUUID", testUUID),
-			zap.String("error", err.Error()),
-		)
+			"testUUID", testUUID,
+			"error", err.Error())
 		return
 	}
 	req, err := http.NewRequestWithContext(
@@ -200,39 +197,34 @@ func (s *CalendarService) startTest(testUUID string) {
 	)
 	if err != nil {
 		logger.Log.Error("Failed to create HTTP request in thread",
-			zap.String("testUUID", testUUID),
-			zap.String("error", err.Error()),
-		)
+			"testUUID", testUUID,
+			"error", err.Error())
 		return
 	}
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
 		logger.Log.Error("Error on response in thread",
-			zap.String("testUUID", testUUID),
-			zap.String("error", err.Error()),
-		)
+			"testUUID", testUUID,
+			"error", err.Error())
 		return
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		logger.Log.Error("Test start fail in thread",
-			zap.String("testUUID", testUUID),
-			zap.String("statusCode", resp.Status),
-		)
+			"testUUID", testUUID,
+			"statusCode", resp.Status)
 		return
 	} else {
 		logger.Log.Info("Test success started in thread",
-			zap.String("testUUID", testUUID),
-			zap.String("statusCode", resp.Status),
-		)
+			"testUUID", testUUID,
+			"statusCode", resp.Status)
 	}
 	testUUID, err = s.repo.SetTestStarted(ctx, 0, testUUID)
 	if err != nil {
 		logger.Log.Error("Set test started faild in DB in thread",
-			zap.String("testUUID", testUUID),
-			zap.String("error", err.Error()),
-		)
+			"testUUID", testUUID,
+			"error", err.Error())
 	}
 }
 
@@ -262,7 +254,7 @@ func (s *CalendarService) generateRandom(size int) ([]byte, error) {
 }
 
 func (s *CalendarService) getKey() ([]byte, error) {
-	return base64.StdEncoding.DecodeString(ENCRYPT_KEY_B64)
+	return base64.StdEncoding.DecodeString(s.config.EncryptKey)
 }
 
 func (s *CalendarService) encryptPass(pass string) (string, error) {

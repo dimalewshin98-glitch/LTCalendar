@@ -99,7 +99,7 @@ func (s *RequestsHandler) LoginUser(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Json request decode error", http.StatusBadRequest)
 		return
 	}
-	res, err := s.service.Login(ctx, req)
+	res, secretKey, err := s.service.Login(ctx, req)
 	if err != nil {
 		if errors.Is(err, repository.ErrUserLogPassIncorrect) {
 			http.Error(w, err.Error(), http.StatusUnauthorized)
@@ -109,7 +109,7 @@ func (s *RequestsHandler) LoginUser(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	tokenString, err := BuildJWTString(res.UserID)
+	tokenString, err := BuildJWTString(res.UserID, secretKey)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return

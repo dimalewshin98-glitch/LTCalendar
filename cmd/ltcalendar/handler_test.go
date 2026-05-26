@@ -25,17 +25,18 @@ type Claims struct {
 	UserID int
 }
 
-const TOKEN_EXP = time.Hour * 3
-const SECRET_KEY = "supersecretkey"
+const TokenExp = time.Hour * 3
+const TestSecretKey = "supersecretkey"
+const TestEncryptKey = "CCHki0M3gumr8P8fs6I7IkyHHdUeNpEbV1/lpbQOtGg="
 
 func BuildJWTString(userID int) (string, error) {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, Claims{
 		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(TOKEN_EXP)),
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(TokenExp)),
 		},
 		UserID: userID,
 	})
-	tokenString, err := token.SignedString([]byte(SECRET_KEY))
+	tokenString, err := token.SignedString([]byte(TestSecretKey))
 	if err != nil {
 		return "", err
 	}
@@ -165,6 +166,7 @@ func TestRegisterUser(t *testing.T) {
 				Return(tt.want.dbResponse, tt.want.dbErrResponse)
 			mockedConfig := &config.Config{
 				ServerHostPort: "localhost:8080",
+				EncryptKey:     TestEncryptKey,
 			}
 			shorterService := service.NewCalendarService(mockedRepository, mockedConfig)
 			requestsHandler := handler.NewRequestsHandler(shorterService)
@@ -238,6 +240,7 @@ func TestLoginUser(t *testing.T) {
 				Return(tt.want.dbResponseUserID, tt.want.dbResponseUserPass, tt.want.dbErrResponse)
 			mockedConfig := &config.Config{
 				ServerHostPort: "localhost:8080",
+				EncryptKey:     TestEncryptKey,
 			}
 			shorterService := service.NewCalendarService(mockedRepository, mockedConfig)
 			requestsHandler := handler.NewRequestsHandler(shorterService)
@@ -324,7 +327,7 @@ func TestAddTest(t *testing.T) {
 			shorterService := service.NewCalendarService(mockedRepository, mockedConfig)
 			requestsHandler := handler.NewRequestsHandler(shorterService)
 			appHandler := http.HandlerFunc(requestsHandler.AddTest)
-			handlerWithMiddleware := handler.AuthMiddleware(appHandler, mockedRepository)
+			handlerWithMiddleware := handler.AuthMiddleware(appHandler, mockedRepository, TestSecretKey)
 			request := httptest.NewRequest(tt.requestType, tt.request, strings.NewReader(tt.body))
 			request.Header.Set("content-Type", tt.contentType)
 			token, _ := BuildJWTString(666)
@@ -415,7 +418,7 @@ func TestUpdateTest(t *testing.T) {
 			shorterService := service.NewCalendarService(mockedRepository, mockedConfig)
 			requestsHandler := handler.NewRequestsHandler(shorterService)
 			appHandler := http.HandlerFunc(requestsHandler.UpdateTest)
-			handlerWithMiddleware := handler.AuthMiddleware(appHandler, mockedRepository)
+			handlerWithMiddleware := handler.AuthMiddleware(appHandler, mockedRepository, TestSecretKey)
 			request := httptest.NewRequest(tt.requestType, tt.request, strings.NewReader(tt.body))
 			request.Header.Set("content-Type", tt.contentType)
 			token, _ := BuildJWTString(666)
@@ -477,7 +480,7 @@ func TestDeleteTest(t *testing.T) {
 			shorterService := service.NewCalendarService(mockedRepository, mockedConfig)
 			requestsHandler := handler.NewRequestsHandler(shorterService)
 			appHandler := http.HandlerFunc(requestsHandler.DeleteTest)
-			handlerWithMiddleware := handler.AuthMiddleware(appHandler, mockedRepository)
+			handlerWithMiddleware := handler.AuthMiddleware(appHandler, mockedRepository, TestSecretKey)
 			request := httptest.NewRequest(tt.requestType, tt.request, strings.NewReader(tt.body))
 			request.Header.Set("content-Type", tt.contentType)
 			token, _ := BuildJWTString(666)
@@ -562,7 +565,7 @@ func TestGetTest(t *testing.T) {
 			shorterService := service.NewCalendarService(mockedRepository, mockedConfig)
 			requestsHandler := handler.NewRequestsHandler(shorterService)
 			appHandler := http.HandlerFunc(requestsHandler.GetTest)
-			handlerWithMiddleware := handler.AuthMiddleware(appHandler, mockedRepository)
+			handlerWithMiddleware := handler.AuthMiddleware(appHandler, mockedRepository, TestSecretKey)
 			request := httptest.NewRequest(tt.requestType, tt.request, nil)
 			request.Header.Set("content-Type", tt.contentType)
 			token, _ := BuildJWTString(666)
@@ -644,7 +647,7 @@ func TestGetTests(t *testing.T) {
 			shorterService := service.NewCalendarService(mockedRepository, mockedConfig)
 			requestsHandler := handler.NewRequestsHandler(shorterService)
 			appHandler := http.HandlerFunc(requestsHandler.GetTests)
-			handlerWithMiddleware := handler.AuthMiddleware(appHandler, mockedRepository)
+			handlerWithMiddleware := handler.AuthMiddleware(appHandler, mockedRepository, TestSecretKey)
 			request := httptest.NewRequest(tt.requestType, tt.request, nil)
 			request.Header.Set("content-Type", tt.contentType)
 			token, _ := BuildJWTString(666)

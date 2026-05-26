@@ -8,7 +8,6 @@ import (
 	"github.com/dimalewshin98-glitch/LTCalendar/internal/handler"
 	"github.com/dimalewshin98-glitch/LTCalendar/internal/logger"
 	"github.com/dimalewshin98-glitch/LTCalendar/internal/repository"
-	"go.uber.org/zap"
 )
 
 func main() {
@@ -19,17 +18,17 @@ func main() {
 		panic(err)
 	}
 	repo, err = repository.NewDBRepository(cfg.DatabaseDsn)
-	logger.Log.Info("Start tests in thread", zap.String("enabled", strconv.FormatBool(cfg.EnabledTestStarter)))
-	logger.Log.Info("Repository adress set to", zap.String("type", cfg.DatabaseDsn))
+	logger.Log.Info("Start tests in thread", "enabled", strconv.FormatBool(cfg.EnabledTestStarter))
+	logger.Log.Info("Repository adress set to", "type", cfg.DatabaseDsn)
 	if err != nil {
 		panic(err)
 	}
 	app := NewApp(repo, *cfg)
 	appHandler := app.GetHandler()
-	logger.Log.Info("Running server", zap.String("address", cfg.ServerHostPort))
-	err = http.ListenAndServe(cfg.ServerHostPort, logger.RequestLogger(handler.AuthMiddleware(handler.GzipMiddleware(appHandler), repo)))
+	logger.Log.Info("Running server", "address", cfg.ServerHostPort)
+	err = http.ListenAndServe(cfg.ServerHostPort, logger.RequestLogger(handler.AuthMiddleware(handler.GzipMiddleware(appHandler), repo, cfg.SecretKey)))
 	if err != nil {
-		logger.Log.Fatal("Server failed", zap.Error(err))
+		logger.Log.Error("Server failed", "error", err)
 		panic(err)
 	}
 }

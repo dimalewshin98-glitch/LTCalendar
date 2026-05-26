@@ -18,31 +18,30 @@ type Claims struct {
 	UserID int
 }
 
-const TOKEN_EXP = time.Hour * 3
-const SECRET_KEY = "supersecretkey"
+const TokenExp = time.Hour * 3
 
-func BuildJWTString(userID int) (string, error) {
+func BuildJWTString(userID int, secretKey string) (string, error) {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, Claims{
 		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(TOKEN_EXP)),
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(TokenExp)),
 		},
 		UserID: userID,
 	})
-	tokenString, err := token.SignedString([]byte(SECRET_KEY))
+	tokenString, err := token.SignedString([]byte(secretKey))
 	if err != nil {
 		return "", err
 	}
 	return tokenString, nil
 }
 
-func GetUserID(tokenString string) int {
+func GetUserID(tokenString string, secretKey string) int {
 	claims := &Claims{}
 	token, err := jwt.ParseWithClaims(tokenString, claims,
 		func(t *jwt.Token) (interface{}, error) {
 			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
 				return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
 			}
-			return []byte(SECRET_KEY), nil
+			return []byte(secretKey), nil
 		})
 	if err != nil {
 		return -1
@@ -73,7 +72,7 @@ func CreateUserID(repo repository.RepositoryInterface) (int, error) {
 	return maxUserID, nil
 }
 
-func AuthMiddleware(h http.Handler, repo repository.RepositoryInterface) http.Handler {
+func AuthMiddleware(h http.Handler, repo repository.RepositoryInterface, secretKey string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var ctx context.Context
 		if ((r.URL.String() == "/api/user/register" || r.URL.String() == "/api/user/login") && r.Method == "POST") ||
@@ -93,7 +92,7 @@ func AuthMiddleware(h http.Handler, repo repository.RepositoryInterface) http.Ha
 			} else {
 				tokenString = cookie.Value
 			}
-			userID := GetUserID(tokenString)
+			userID := GetUserID(tokenString, secretKey)
 			switch userID {
 			case 0:
 				http.Error(w, "", http.StatusUnauthorized)

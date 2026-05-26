@@ -13,6 +13,8 @@ type Config struct {
 	EnabledTestStarter bool
 	IntegrationDsn     string
 	IntegrationRL      int
+	EncryptKey         string
+	SecretKey          string
 }
 
 func NewConfig() *Config {
@@ -21,6 +23,8 @@ func NewConfig() *Config {
 	databaseDsn := flag.String("d", "localhost:5432", "databse destination (host/host:port)")
 	integrationDsn := flag.String("i", "localhost:2345", "integration destination (host:port)")
 	integrationRL := flag.Int("r", 10, "integration requests rate limiter (int)")
+	encryptKey := flag.String("ek", "", "Encrypt key B64")
+	secretKey := flag.String("sk", "", "Secret key")
 	enabledTestStarter := flag.Bool("s", false, "enable start tests integration (bool)")
 	flag.Parse()
 	if envServerHostPort := os.Getenv("SERVER_ADDRESS"); envServerHostPort != "" {
@@ -42,12 +46,18 @@ func NewConfig() *Config {
 			*integrationRL = envintegrationRLInt
 		}
 	}
-	if envEnabledTestStarter := os.Getenv("INTEGRATION_RL"); envEnabledTestStarter != "" {
+	if envEnabledTestStarter := os.Getenv("ENABLED_TEST_STARTER"); envEnabledTestStarter != "" {
 		envEnabledTestStarterBool, err := strconv.ParseBool(envEnabledTestStarter)
 		if err != nil {
 		} else {
 			*enabledTestStarter = envEnabledTestStarterBool
 		}
+	}
+	if envEncryptKey := os.Getenv("ENCRYPT_KEY"); envEncryptKey != "" {
+		*encryptKey = envEncryptKey
+	}
+	if envSecretKey := os.Getenv("SECRET_KEY"); envSecretKey != "" {
+		*secretKey = envSecretKey
 	}
 	conf := &Config{
 		ServerHostPort:     *serverHostPort,
@@ -56,6 +66,8 @@ func NewConfig() *Config {
 		IntegrationDsn:     *integrationDsn,
 		IntegrationRL:      *integrationRL,
 		EnabledTestStarter: *enabledTestStarter,
+		EncryptKey:         *encryptKey,
+		SecretKey:          *secretKey,
 	}
 	return conf
 }

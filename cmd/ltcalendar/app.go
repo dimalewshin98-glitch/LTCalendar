@@ -7,7 +7,6 @@ import (
 	"github.com/dimalewshin98-glitch/LTCalendar/internal/handler"
 	"github.com/dimalewshin98-glitch/LTCalendar/internal/repository"
 	"github.com/dimalewshin98-glitch/LTCalendar/internal/service"
-	"github.com/go-chi/chi/v5"
 )
 
 type App struct {
@@ -25,14 +24,16 @@ func NewApp(repo repository.RepositoryInterface, cfg config.Config) *App {
 func (a *App) GetHandler() http.Handler {
 	shorterService := service.NewCalendarService(a.repo, &a.cfg)
 	requestsHandler := handler.NewRequestsHandler(shorterService)
-	r := chi.NewRouter()
-	r.Get("/ping", requestsHandler.Ping)
-	r.Post("/api/tests", requestsHandler.AddTest)
-	r.Get("/api/tests", requestsHandler.GetTests)
-	r.Get("/api/tests/{uuid}", requestsHandler.GetTest)
-	r.Put("/api/tests/{uuid}", requestsHandler.UpdateTest)
-	r.Delete("/api/tests/{uuid}", requestsHandler.DeleteTest)
-	r.Post("/api/user/login", requestsHandler.LoginUser)
-	r.Post("/api/user/register", requestsHandler.RegisterUser)
-	return r
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /ping", requestsHandler.Ping)
+	api := http.NewServeMux()
+	api.HandleFunc("POST /tests", requestsHandler.AddTest)
+	api.HandleFunc("GET /tests", requestsHandler.GetTests)
+	api.HandleFunc("GET /tests/{uuid}", requestsHandler.GetTest)
+	api.HandleFunc("PUT /tests/{uuid}", requestsHandler.UpdateTest)
+	api.HandleFunc("DELETE /tests/{uuid}", requestsHandler.DeleteTest)
+	api.HandleFunc("POST /user/login", requestsHandler.LoginUser)
+	api.HandleFunc("POST /user/register", requestsHandler.RegisterUser)
+	mux.Handle("/api/", http.StripPrefix("/api", api))
+	return mux
 }
